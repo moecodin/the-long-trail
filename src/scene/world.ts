@@ -1,11 +1,13 @@
 // The 3D world for the intro: Della's cottage in Lowmeadow on a stormy night,
 // the dark valley outside, and the Summit far away with its lantern.
 //
-// Everything is built from simple shapes for now. Real low-poly art (KayKit)
-// replaces these pieces in Milestone 1.
+// The world is first built from simple shapes, so something shows right away.
+// dressWithKits() then swaps in the Quaternius kit models (see kits.ts) as they
+// finish loading. If loading fails, the simple shapes stay.
 
 import * as THREE from "three";
 import { makePerson, type Person } from "./people";
+import { dressWorld, type Placeholders } from "./kits";
 
 export interface World {
   renderer: THREE.WebGLRenderer;
@@ -24,13 +26,18 @@ export interface World {
   setItemsGlow(amount: number): void;
   render(dt: number, time: number): void;
   resize(): void;
+  /** Load the kit models and swap them in for the simple shapes. */
+  dressWithKits(): Promise<void>;
 }
 
 // Room size (meters). The back wall, with the window, faces the Summit.
 const ROOM_W = 8;
 const ROOM_D = 6;
-const ROOM_H = 3;
+const ROOM_H = 3.1;
 const WALL = 0.25;
+/** The back-wall window sits in the second 2 m wall section from the left. */
+export const WIN_X = -1;
+export const ROOM = { W: ROOM_W, D: ROOM_D, H: ROOM_H };
 export const SUMMIT = new THREE.Vector3(12, 36, -300);
 
 const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
@@ -93,6 +100,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   scene.fog = new THREE.FogExp2("#141c30", 0.0035);
 
   const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 1200);
+  const ph: Placeholders = { walls: [], floor: [], roof: [], nearTrees: [], forest: [], table: null!, window: [] };
 
   // ---------- lights ----------
   const hemi = new THREE.HemisphereLight("#6a80b8", "#2a2418", 0.9);
@@ -179,12 +187,13 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     top.scale.setScalar(s);
     top.castShadow = true;
     scene.add(trunk, top);
+    return [trunk, top];
   };
-  for (const [x, z, s] of [[-9, -6, 1.2], [-11, 2, 1], [9, -8, 1.1], [12, 4, 0.9], [-7, 9, 1], [7, 10, 1.2]]) addTree(x, z, s);
+  for (const [x, z, s] of [[-9, -6, 1.2], [-11, 2, 1], [9, -8, 1.1], [12, 4, 0.9], [-7, 9, 1], [7, 10, 1.2]]) ph.nearTrees.push(...addTree(x, z, s));
   for (let i = 0; i < 260; i++) {
     const x = (hash(i, 7) - 0.5) * 420;
     const z = -90 - hash(i, 13) * 120;
-    addTree(x, z, 1.5 + hash(i, 3) * 2);
+    ph.forest.push(...addTree(x, z, 1.5 + hash(i, 3) * 2));
   }
 
   // mountains, with the tallest one carrying the Summit lantern
@@ -218,9 +227,10 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   const timber = flat("#5a3d28");
   const floorMat = flat("#7a5638");
   const stone = flat("#7d7a74");
+  ph.stone = stone;
   const roofMat = flat("#5e3a2a");
 
-  cottage.add(box(ROOM_W, 0.1, ROOM_D, floorMat, 0, -0.05, 0));
+  ph.floor.push(cottage.add(box(ROOM_W, 0.1, ROOM_D, floorMat, 0, -0.05, 0)).children.at(-1)!);
   // back wall with a window (the window looks toward the Summit)
   const winW = 1.6, winBottom = 1.0, winTop = 2.3;
   // One wall shape with a window-sized hole, so there are no seams for light to leak through.
@@ -231,36 +241,39 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   wallShape.lineTo(-ROOM_W / 2, ROOM_H);
   wallShape.closePath();
   const hole = new THREE.Path();
-  hole.moveTo(-winW / 2, winBottom);
-  hole.lineTo(-winW / 2, winTop);
-  hole.lineTo(winW / 2, winTop);
-  hole.lineTo(winW / 2, winBottom);
+  hole.moveTo(WIN_X - winW / 2, winBottom);
+  hole.lineTo(WIN_X - winW / 2, winTop);
+  hole.lineTo(WIN_X + winW / 2, winTop);
+  hole.lineTo(WIN_X + winW / 2, winBottom);
   hole.closePath();
   wallShape.holes.push(hole);
   const backWall = new THREE.Mesh(new THREE.ExtrudeGeometry(wallShape, { depth: WALL, bevelEnabled: false }), plaster);
   backWall.position.z = -ROOM_D / 2 - WALL / 2;
   backWall.castShadow = backWall.receiveShadow = true;
   cottage.add(backWall);
+  ph.walls.push(backWall);
   // window frame and cross bars
   for (const [w, h, x, y] of [[winW + 0.2, 0.1, 0, winBottom], [winW + 0.2, 0.1, 0, winTop], [0.1, winTop - winBottom, -winW / 2, (winTop + winBottom) / 2], [0.1, winTop - winBottom, winW / 2, (winTop + winBottom) / 2], [0.06, winTop - winBottom, 0, (winTop + winBottom) / 2], [winW, 0.06, 0, (winTop + winBottom) / 2]] as const) {
-    cottage.add(box(w, h, WALL + 0.06, timber, x, y, -ROOM_D / 2));
+    ph.window.push(cottage.add(box(w, h, WALL + 0.06, timber, WIN_X + x, y, -ROOM_D / 2)).children.at(-1)!);
   }
   const glass = new THREE.Mesh(new THREE.PlaneGeometry(winW, winTop - winBottom), new THREE.MeshStandardMaterial({ color: "#9fb6d8", transparent: true, opacity: 0.12, roughness: 0.1 }));
-  glass.position.set(0, (winTop + winBottom) / 2, -ROOM_D / 2 + 0.02);
+  glass.position.set(WIN_X, (winTop + winBottom) / 2, -ROOM_D / 2 + 0.02);
   cottage.add(glass);
+  ph.window.push(glass);
 
   // left wall (fireplace side), front wall
-  cottage.add(box(WALL, ROOM_H, ROOM_D, plaster, -ROOM_W / 2, ROOM_H / 2, 0));
-  cottage.add(box(ROOM_W, ROOM_H, WALL, plaster, 0, ROOM_H / 2, ROOM_D / 2));
+  ph.walls.push(cottage.add(box(WALL, ROOM_H, ROOM_D, plaster, -ROOM_W / 2, ROOM_H / 2, 0)).children.at(-1)!);
+  ph.walls.push(cottage.add(box(ROOM_W, ROOM_H, WALL, plaster, 0, ROOM_H / 2, ROOM_D / 2)).children.at(-1)!);
   // right wall with a door gap near the front
-  const doorW = 1.1, doorZ = 1.6, doorH = 2.2;
+  const doorW = 1.1, doorZ = 2, doorH = 2.2;
   const backPart = ROOM_D / 2 + doorZ - doorW / 2;
-  cottage.add(box(WALL, ROOM_H, backPart, plaster, ROOM_W / 2, ROOM_H / 2, -ROOM_D / 2 + backPart / 2));
+  ph.walls.push(cottage.add(box(WALL, ROOM_H, backPart, plaster, ROOM_W / 2, ROOM_H / 2, -ROOM_D / 2 + backPart / 2)).children.at(-1)!);
   const frontPart = ROOM_D / 2 - doorZ - doorW / 2;
-  cottage.add(box(WALL, ROOM_H, frontPart, plaster, ROOM_W / 2, ROOM_H / 2, ROOM_D / 2 - frontPart / 2));
-  cottage.add(box(WALL, ROOM_H - doorH, doorW, plaster, ROOM_W / 2, (ROOM_H + doorH) / 2, doorZ));
+  ph.walls.push(cottage.add(box(WALL, ROOM_H, frontPart, plaster, ROOM_W / 2, ROOM_H / 2, ROOM_D / 2 - frontPart / 2)).children.at(-1)!);
+  ph.walls.push(cottage.add(box(WALL, ROOM_H - doorH, doorW, plaster, ROOM_W / 2, (ROOM_H + doorH) / 2, doorZ)).children.at(-1)!);
   // an open door, swung outward
   const door = box(0.08, doorH, doorW, timber, 0, doorH / 2, doorW / 2);
+  ph.door = door;
   const doorPivot = new THREE.Group();
   doorPivot.position.set(ROOM_W / 2 + 0.05, 0, doorZ - doorW / 2);
   doorPivot.add(door);
@@ -276,9 +289,10 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   roof.position.y = ROOM_H + 1.3;
   roof.castShadow = true;
   cottage.add(roof);
+  ph.roof.push(roof);
   cottage.add(box(ROOM_W, 0.08, ROOM_D, timber, 0, ROOM_H + 0.02, 0)); // ceiling
   // chimney
-  cottage.add(box(0.9, 2.2, 0.9, stone, -ROOM_W / 2 + 0.6, ROOM_H + 1.4, -0.4));
+  ph.roof.push(cottage.add(box(0.9, 2.2, 0.9, stone, -ROOM_W / 2 + 0.6, ROOM_H + 1.4, -0.4)).children.at(-1)!);
 
   // fireplace on the left wall
   const fireX = -ROOM_W / 2 + 0.45;
@@ -299,6 +313,9 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   fireLight.position.set(fireX + 0.8, 0.8, -0.4);
   fireLight.castShadow = true;
   fireLight.shadow.mapSize.set(512, 512);
+  // keeps the kit walls' bumpy plaster from catching stripy "shadow acne"
+  fireLight.shadow.bias = -0.004;
+  fireLight.shadow.normalBias = 0.03;
   cottage.add(fireLight);
 
   // rug, armchair by the fire
@@ -322,6 +339,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   for (const [x, z] of [[-0.6, -0.32], [0.6, -0.32], [-0.6, 0.32], [0.6, 0.32]]) table.add(box(0.08, 0.78, 0.08, timber, x, 0.39, z));
   table.position.set(1.6, 0, -1.6);
   cottage.add(table);
+  ph.table = table;
   const tableItems = new THREE.Group();
   tableItems.position.copy(table.position);
   cottage.add(tableItems);
@@ -361,7 +379,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
 
   // a warm lamp on the outside wall so the cottage reads from the title shot
   const windowGlow = new THREE.PointLight("#ffb066", 0, 14, 1.5);
-  windowGlow.position.set(0, 1.6, -ROOM_D / 2 - 1);
+  windowGlow.position.set(WIN_X, 1.6, -ROOM_D / 2 - 1);
   cottage.add(windowGlow);
 
   // ---------- people ----------
@@ -417,9 +435,9 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     titleLook: new THREE.Vector3(SUMMIT.x, 20, SUMMIT.z),
     fireCam: new THREE.Vector3(-3.4, 1.9, 2.6),
     fireLook: new THREE.Vector3(-1.9, 0.7, -0.3),
-    windowCam: new THREE.Vector3(-0.6, 1.25, 2.4),
-    windowLook: new THREE.Vector3(-0.1, 1.85, -3),
-    window: new THREE.Vector3(0, 0.05, -2.2),
+    windowCam: new THREE.Vector3(WIN_X - 0.6, 1.25, 2.4),
+    windowLook: new THREE.Vector3(WIN_X - 0.1, 1.85, -3),
+    window: new THREE.Vector3(WIN_X, 0.05, -2.2),
     mirror: new THREE.Vector3(ROOM_W / 2 - 1.0, 0.05, 0.1),
     mirrorCam: new THREE.Vector3(ROOM_W / 2 - 2.6, 1.55, 0.35),
     mirrorLook: new THREE.Vector3(ROOM_W / 2 - 0.2, 1.4, 0.1),
@@ -440,6 +458,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     tableItems,
     door: doorPivot,
     spots,
+    dressWithKits: async () => {},
     setStorm(a) {
       storm = a;
     },
@@ -507,6 +526,8 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       camera.updateProjectionMatrix();
     },
   };
+  world.dressWithKits = () =>
+    dressWorld({ scene, cottage, ph, doorPivot, tableItems, journal, groundHeight, fireX, doorZ });
   world.resize();
   return world;
 }
