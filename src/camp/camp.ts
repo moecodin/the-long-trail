@@ -398,14 +398,31 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
 
   // ---------- dress with the kit models ----------
   async function dress() {
-    // the traveler's satchel: "Adventure Satchel" by Reidicus (CC BY 4.0, see CREDITS.md)
-    const satchel = loadSatchel(loader, BASE).catch((err) => {
-      console.warn("Satchel model did not load; the traveler goes without.", err);
-      return null;
-    });
-    const people = Promise.all([loadKayKit(loader, BASE), satchel]).then(([loaded, bag]) => {
+    // The traveler's body comes first and never waits on the satchel
+    // ("Adventure Satchel" by Reidicus, CC BY 4.0, see CREDITS.md), which is
+    // hung on whichever body they wear once it arrives. If it fails, they go without.
+    let wearing: THREE.Object3D | null = null;
+    let satchel: THREE.Object3D | null = null;
+    const hang = () => {
+      if (!wearing || !satchel) return;
+      try {
+        wearSatchel(wearing, satchel);
+      } catch (err) {
+        console.warn("Could not hang the satchel.", err);
+      }
+    };
+    loadSatchel(loader, BASE)
+      .then((bag) => {
+        satchel = bag;
+        hang();
+      })
+      .catch((err) => console.warn("Satchel model did not load; the traveler goes without.", err));
+    const people = loadKayKit(loader, BASE).then((loaded) => {
       const castFor = (l: PersonLook) => l.cast ?? "unknown";
-      const gear = bag ? (m: THREE.Object3D) => wearSatchel(m, bag) : undefined;
+      const gear = (m: THREE.Object3D) => {
+        wearing = m;
+        hang();
+      };
       frameHooks.push(wearKayKit(traveler, loaded, castFor, traveler.look, 1, gear));
     });
 
