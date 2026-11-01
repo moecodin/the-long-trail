@@ -15,6 +15,14 @@ where you pick and name your traveler.
 - **Preview link:** `npm run build:preview` makes a version with the music built into the page, for hosts that only serve web files (like the Claude preview link).
 - Add `?speed=3` to the address to play the intro three times faster while testing.
 
+## Landscape only
+
+The game is played with the phone sideways. iPhone Safari can't lock the
+screen's orientation, so when the phone is upright the game shows a "turn your
+phone sideways" notice and pauses the story (the satchel button still works).
+When the game is wrapped as an iPhone app (Milestone 6), set the supported
+orientations in Xcode to Landscape Left and Landscape Right only.
+
 ## Run it yourself
 
 You need [Node.js](https://nodejs.org) 20 or newer.

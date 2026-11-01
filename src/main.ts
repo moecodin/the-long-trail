@@ -30,11 +30,30 @@ const save = loadSave();
 const audio = new AudioManager(save.muted);
 const director = new Director();
 
+// The story pauses while the journal is open or while the phone is held upright
+// (the game is landscape only).
+let journalOpen = false;
+const portrait = window.matchMedia("(orientation: portrait)");
+const updatePause = () => (director.paused = journalOpen || portrait.matches);
+portrait.addEventListener("change", updatePause);
+updatePause();
+
+const rotateNotice = document.createElement("div");
+rotateNotice.className = "rotate-notice";
+rotateNotice.innerHTML = `<div class="rotate-phone"></div><p>Turn your phone sideways to play</p><p class="muted">The Long Trail is played in landscape.</p>`;
+document.body.appendChild(rotateNotice);
+
 // 1. The satchel comes first, before any 3D, so logging is never behind a loading screen.
 mountSatchel({
   muted: save.muted,
-  onOpen: () => (director.paused = true),
-  onClose: () => (director.paused = false),
+  onOpen: () => {
+    journalOpen = true;
+    updatePause();
+  },
+  onClose: () => {
+    journalOpen = false;
+    updatePause();
+  },
   onToggleSound: () => {
     save.muted = !save.muted;
     audio.setMuted(save.muted);
@@ -285,6 +304,12 @@ async function start() {
   const choice = await titleScreen(returning);
   // This tap is what lets iPhone play sound.
   audio.unlock();
+  // Where the browser allows it (mostly Android), hold the screen in landscape.
+  try {
+    await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.("landscape");
+  } catch {
+    // iPhone Safari can't lock orientation; the "turn your phone" notice covers it.
+  }
   void audio.playMusic(MUSIC_URL, MUSIC_LOOP_SECONDS, 0.7, 3);
   if (returning && choice === "begin") {
     mode = "scene";

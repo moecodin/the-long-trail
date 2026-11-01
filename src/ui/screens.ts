@@ -101,23 +101,27 @@ export function creationScreen(current: CreationResult | null, stage: number): P
     "div",
     "overlay creation",
     `<div class="mirror-card">
-      <p class="kicker">The old mirror by the door</p>
-      <h2>Who's looking back?</h2>
-      <div class="mirror-frame"><div class="mirror-glass stage-${stage}"></div><div class="mirror-mist"></div></div>
-      <button class="text-btn focus-peek" type="button">See how it comes into focus</button>
-      <p class="stage-label"></p>
-      <div class="picker" role="radiogroup" aria-label="Pick your traveler">
-        ${TRAVELERS.map(
-          (t) => `<button class="pick" role="radio" data-id="${t.id}" type="button">
-             <span class="thumb">${portraitSVG(t)}</span><span class="pick-label">${t.label}</span></button>`,
-        ).join("")}
+      <div class="mirror-side">
+        <div class="mirror-frame"><div class="mirror-glass stage-${stage}"></div><div class="mirror-mist"></div></div>
+        <p class="stage-label"></p>
+        <button class="text-btn focus-peek" type="button">See how it comes into focus</button>
       </div>
-      <form class="name-form" autocomplete="off">
-        <label for="traveler-name">Name your traveler</label>
-        <input id="traveler-name" name="name" maxlength="16" placeholder="Type a name" enterkeyhint="done" autocapitalize="words" spellcheck="false" />
-        <p class="name-hint">&nbsp;</p>
-        <button class="wood-btn confirm" type="submit">This is me</button>
-      </form>
+      <div class="choose-side">
+        <p class="kicker">The old mirror by the door</p>
+        <h2>Who's looking back?</h2>
+        <div class="picker" role="radiogroup" aria-label="Pick your traveler">
+          ${TRAVELERS.map(
+            (t) => `<button class="pick" role="radio" data-id="${t.id}" type="button">
+               <span class="thumb">${portraitSVG(t)}</span><span class="pick-label">${t.label}</span></button>`,
+          ).join("")}
+        </div>
+        <form class="name-form" autocomplete="off">
+          <label for="traveler-name">Name your traveler</label>
+          <input id="traveler-name" name="name" maxlength="16" placeholder="Type a name" enterkeyhint="done" autocapitalize="words" spellcheck="false" />
+          <p class="name-hint">&nbsp;</p>
+          <button class="wood-btn confirm" type="submit">This is me</button>
+        </form>
+      </div>
     </div>`,
   );
   // Taps inside the card shouldn't fall through to anything behind it.
@@ -198,12 +202,14 @@ export function endCard(name: string, traveler: Traveler): Promise<"replay" | "c
     "overlay end-card",
     `<div class="end-inner">
       <div class="end-portrait"><div class="stage-1">${portraitSVG(traveler)}</div></div>
-      <p class="kicker">The Lantern Wakes</p>
-      <h2>${escapeHtml(name)}'s trail begins at dusk.</h2>
-      <p>That's the end of the intro for now. Walking around camp comes next, in Milestone 1.</p>
-      <div class="end-actions">
-        <button class="text-btn change">Change traveler</button>
-        <button class="wood-btn replay">Replay intro</button>
+      <div class="end-text">
+        <p class="kicker">The Lantern Wakes</p>
+        <h2>${escapeHtml(name)}'s trail begins at dusk.</h2>
+        <p>That's the end of the intro for now. Walking around camp comes next, in Milestone 1.</p>
+        <div class="end-actions">
+          <button class="text-btn change">Change traveler</button>
+          <button class="wood-btn replay">Replay intro</button>
+        </div>
       </div>
     </div>`,
   );
