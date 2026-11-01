@@ -28,6 +28,11 @@ export interface Person {
   setSit(amount: number): void;
   /** Swing arms and legs; phase in radians, amount 0 to 1. */
   setWalk(phase: number, amount: number): void;
+  /**
+   * For free walking (camp): move at this many meters per second this frame.
+   * 0 stands still; above about 1.4 m/s the walk turns into a jog.
+   */
+  setPace(speed: number, dt: number): void;
 }
 
 const mat = (color: string) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.9 });
@@ -132,6 +137,16 @@ export function makePerson(look: PersonLook, height = 1): Person {
 
   body.scale.setScalar(height);
 
+  const walkPose = (phase: number, amount: number) => {
+    const s = Math.sin(phase) * 0.55 * amount;
+    leftLeg.rotation.x = s;
+    rightLeg.rotation.x = -s;
+    leftArm.rotation.x = -s * 0.8;
+    rightArm.rotation.x = s * 0.8;
+    body.position.y = Math.abs(Math.cos(phase)) * 0.03 * amount;
+  };
+  let pacePhase = 0;
+
   const person: Person = {
     root,
     head,
@@ -154,12 +169,11 @@ export function makePerson(look: PersonLook, height = 1): Person {
       rightLeg.rotation.x = -1.45 * amount;
     },
     setWalk(phase, amount) {
-      const s = Math.sin(phase) * 0.55 * amount;
-      leftLeg.rotation.x = s;
-      rightLeg.rotation.x = -s;
-      leftArm.rotation.x = -s * 0.8;
-      rightArm.rotation.x = s * 0.8;
-      body.position.y = Math.abs(Math.cos(phase)) * 0.03 * amount;
+      walkPose(phase, amount);
+    },
+    setPace(speed, dt) {
+      pacePhase += speed * dt * 4.5;
+      walkPose(pacePhase, Math.min(1, speed / 1.2));
     },
   };
   return person;

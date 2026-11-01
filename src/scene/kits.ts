@@ -48,24 +48,20 @@ interface DressContext {
   onFrame(f: (dt: number) => void): void;
 }
 
-const BASE = `${import.meta.env.BASE_URL}models/`;
+export const BASE = `${import.meta.env.BASE_URL}models/`;
 
-// The phone preview link can only hold a few kinds of files, so its build packs
-// every model into one script (tools/pack-preview-models.mjs) that fills
-// window.__KIT_ASSETS. When that is there, model requests are answered from it.
-const packed = (window as unknown as { __KIT_ASSETS?: Record<string, string> }).__KIT_ASSETS;
-const manager = new THREE.LoadingManager();
-if (packed) {
-  manager.setURLModifier((url) => {
-    const m = url.match(/(village|props|nature)\/[^/?#]+$/);
-    return (m && packed[m[0]]) || url;
-  });
+// The Claude preview link only serves some kinds of files, so its build
+// (tools/pack-preview-models.mjs) renames the model files: X.gltf becomes
+// X.gltf.json, and X.bin / X.glb get ".wasm" added. Ask for those names there.
+export const manager = new THREE.LoadingManager();
+if (import.meta.env.MODE === "preview") {
+  manager.setURLModifier((url) => url.replace(/\.gltf(?=$|[?#])/, ".gltf.json").replace(/\.(bin|glb)(?=$|[?#])/, ".$1.wasm"));
 }
-const loader = new GLTFLoader(manager);
+export const loader = new GLTFLoader(manager);
 const cache = new Map<string, Promise<THREE.Object3D>>();
 
 /** Load a kit model once; each call returns a fresh copy that shares geometry and textures. */
-async function model(kit: "village" | "props" | "nature", name: string): Promise<THREE.Object3D> {
+export async function model(kit: "village" | "props" | "nature" | "camp", name: string): Promise<THREE.Object3D> {
   const key = `${kit}/${name}`;
   if (!cache.has(key)) {
     cache.set(
@@ -85,7 +81,7 @@ async function model(kit: "village" | "props" | "nature", name: string): Promise
   return (await cache.get(key)!).clone();
 }
 
-function place(o: THREE.Object3D, x: number, y: number, z: number, ry = 0, s: number | THREE.Vector3Tuple = 1) {
+export function place(o: THREE.Object3D, x: number, y: number, z: number, ry = 0, s: number | THREE.Vector3Tuple = 1) {
   o.position.set(x, y, z);
   o.rotation.y = ry;
   if (typeof s === "number") o.scale.setScalar(s);
@@ -97,7 +93,7 @@ function place(o: THREE.Object3D, x: number, y: number, z: number, ry = 0, s: nu
  * Many copies of one model drawn in a single go (one draw per mesh part), for
  * the forest far away. Much cheaper for a phone than hundreds of separate trees.
  */
-function instanced(src: THREE.Object3D, transforms: THREE.Matrix4[]): THREE.Group {
+export function instanced(src: THREE.Object3D, transforms: THREE.Matrix4[]): THREE.Group {
   const group = new THREE.Group();
   src.updateMatrixWorld(true);
   src.traverse((o) => {
@@ -114,7 +110,7 @@ function instanced(src: THREE.Object3D, transforms: THREE.Matrix4[]): THREE.Grou
 }
 
 /** Cheap repeatable random numbers, so the scenery is the same every time. */
-function seeded(seed: number) {
+export function seeded(seed: number) {
   return () => {
     seed = (seed * 16807) % 2147483647;
     return seed / 2147483647;
@@ -126,7 +122,7 @@ function seeded(seed: number) {
  * "trim sheets" (many surfaces painted on one image); our hand-built pieces
  * only want one patch of it. u/v/w/h are in 0-1 image coordinates from the top left.
  */
-function sheetPatch(src: THREE.Texture, u: number, v: number, w: number, h: number, color = "#ffffff") {
+export function sheetPatch(src: THREE.Texture, u: number, v: number, w: number, h: number, color = "#ffffff") {
   const map = src.clone();
   map.flipY = false; // glTF textures are stored top-down
   map.wrapS = map.wrapT = THREE.RepeatWrapping;

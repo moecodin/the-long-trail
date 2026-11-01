@@ -3,8 +3,22 @@
 A cozy, no-combat 3D adventure for iPhone with a built-in meal and weigh-in
 tracker. You walk a traveler from Lowmeadow to the Summit, one trail leg a week.
 
-This first build is the opening: **The Lantern Wakes** intro and the mirror
-where you pick and name your traveler.
+What's playable so far: the opening (**The Lantern Wakes** intro and the
+mirror where you pick and name your traveler), then **camp** (Milestone 1),
+where you walk your traveler around a clearing at dusk.
+
+## Walking around camp
+
+- **Drag anywhere** on the screen: a thumb joystick appears under your finger.
+  Push a little to stroll, further to jog.
+- **Tap a spot** to walk there. Tap a thing (the tent, the fire, the sign) to
+  walk over and look at it.
+- **The round button** in the bottom right shows up when you're next to
+  something: Look, Read, or Sit on the bench by the fire.
+- On a computer: WASD or arrow keys to walk (hold Shift to jog), E or Space
+  for the button.
+- Add `?from=camp` to the address to skip straight to camp.
+- The satchel has **Change traveler** if you want to pick someone else.
 
 ## Play it
 
@@ -41,7 +55,10 @@ same Wi-Fi) to play it there. Changes you save show up instantly.
 
 | Path | What it is |
 | --- | --- |
-| `src/main.ts` | The order of scenes: title, intro, mirror, Della, end card |
+| `src/main.ts` | The order of scenes: title, intro, mirror, Della, camp |
+| `src/camp/camp.ts` | The camp clearing: tent, campfire, bench, supplies, cart, trail sign |
+| `src/camp/play.ts` | Walking at camp: movement, the follow camera, looking at things |
+| `src/camp/controls.ts` | The thumb joystick, tap-to-walk, keyboard and the action button |
 | `src/scene/world.ts` | The 3D cottage, valley, storm and the Summit lantern |
 | `src/scene/people.ts` | The simple stand-in figures for your traveler and Della |
 | `src/scene/director.ts` | The timing helper that runs scripted scenes (and pauses for the journal) |
@@ -70,5 +87,8 @@ If the loop length changes, update `MUSIC_LOOP_SECONDS` in `src/main.ts`.
 
 ## Art
 
-Everything you see is built from simple shapes for now. Real low-poly models
-(KayKit, CC0) come in with Milestone 1.
+Models come from the Quaternius MegaKits and KayKit Adventurers (both CC0),
+plus a CC BY campfire, see [CREDITS.md](CREDITS.md). Anything with a CC BY
+license must be listed there. `tools/prepare-kits.mjs` copies the kit models
+the game uses into `public/models/` and shrinks their textures. Hand-picked
+extras like the campfire live in `public/models/camp/`.

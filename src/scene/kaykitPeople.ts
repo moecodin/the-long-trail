@@ -28,6 +28,9 @@ export type CastKey = keyof typeof CAST;
 /** KayKit people are about 2.3 m tall; ours are about 1.55 m. */
 const MODEL_HEIGHT = 2.27;
 const PERSON_HEIGHT = 1.55;
+/** How fast (m/s, at our size) the KayKit walk and jog cycles move the feet. */
+const WALK_SPEED = 1.4;
+const RUN_SPEED = 3.4;
 
 interface Loaded {
   scenes: Record<string, THREE.Object3D>;
@@ -138,6 +141,9 @@ export function wearKayKit(person: Person, loaded: Loaded, castFor: (look: Perso
   let mixer: THREE.AnimationMixer | null = null;
   let idle: THREE.AnimationAction | null = null;
   let walk: THREE.AnimationAction | null = null;
+  let run: THREE.AnimationAction | null = null;
+  /** Free-walking speed in m/s, or -1 while a scripted scene drives setWalk. */
+  let pace = -1;
   let bones: ReturnType<typeof bonesOf> | null = null;
   let sit = 0;
   let walkAmount = 0;
@@ -164,8 +170,11 @@ export function wearKayKit(person: Person, loaded: Loaded, castFor: (look: Perso
     const clip = (n: string) => loaded.clips.find((c) => c.name === n)!;
     idle = mixer.clipAction(clip("Idle_A"));
     walk = mixer.clipAction(clip("Walking_A"));
+    run = mixer.clipAction(clip("Running_A"));
+    run.weight = 0;
     idle.play();
     walk.play();
+    run.play();
     bones = bonesOf(model);
   };
   dress(castFor(firstLook));
@@ -185,12 +194,32 @@ export function wearKayKit(person: Person, loaded: Loaded, castFor: (look: Perso
   person.setWalk = (phase, amount) => {
     setWalk(phase, amount);
     walkAmount = amount;
+    pace = -1;
+  };
+  const setPace = person.setPace.bind(person);
+  person.setPace = (speed, dt) => {
+    setPace(speed, dt);
+    pace = speed;
   };
 
   return (dt: number) => {
-    if (!mixer || !bones || !idle || !walk || !person.root.visible) return;
-    walk.weight = walkAmount;
-    idle.weight = 1 - walkAmount;
+    if (!mixer || !bones || !idle || !walk || !run || !person.root.visible) return;
+    if (pace < 0) {
+      walk.weight = walkAmount;
+      idle.weight = 1 - walkAmount;
+      run.weight = 0;
+      walk.timeScale = 1;
+    } else {
+      // Blend idle → walk → jog with speed, and speed the steps up to match
+      // so the feet don't slide.
+      const w = Math.min(1, pace / WALK_SPEED);
+      const r = THREE.MathUtils.clamp((pace - WALK_SPEED) / (RUN_SPEED - WALK_SPEED), 0, 1);
+      idle.weight = 1 - w;
+      walk.weight = w * (1 - r);
+      run.weight = r;
+      const natural = THREE.MathUtils.lerp(WALK_SPEED, RUN_SPEED, r);
+      walk.timeScale = run.timeScale = pace > 0.05 ? THREE.MathUtils.clamp(pace / natural, 0.7, 1.4) : 1;
+    }
     mixer.update(dt);
 
     // Sitting: bend at the hips and knees, and sink into the seat.

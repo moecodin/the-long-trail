@@ -22,6 +22,8 @@ const KITS = {
       "Wall_Plaster_Straight", "Wall_Plaster_Window_Wide_Round", "Wall_Plaster_Door_Round",
       "Floor_WoodDark", "Door_1_Round", "Window_Wide_Round1", "Corner_Exterior_Wood",
       "Roof_RoundTiles_8x8", "Prop_Chimney", "WindowShutters_Wide_Round_Open",
+      // camp
+      "Prop_WoodenFence_Single", "Prop_Wagon",
     ],
   },
   props: {
@@ -30,6 +32,8 @@ const KITS = {
       "Table_Large", "Chair_1", "Bookcase_2", "Barrel", "Shelf_Simple", "Bag", "CandleStick_Triple",
       "Mug", "Book_5", "Book_Stack_1", "Stool", "FarmCrate_Apple", "Pot_1", "SmallBottles_1",
       "Bucket_Wooden_1",
+      // camp
+      "Lantern_Wall", "Crate_Wooden", "Bench", "Rope_1", "Cauldron", "Banner_1",
     ],
     // textures used on their own, for the armchair built in kits.ts
     extraImages: ["T_Trim_Cloth_BaseColor.png"],
@@ -41,6 +45,10 @@ const KITS = {
       "Bush_Common", "Bush_Common_Flowers", "Grass_Common_Tall", "Grass_Wispy_Tall",
       "Flower_3_Group", "Flower_4_Group", "Rock_Medium_1", "Rock_Medium_2", "Rock_Medium_3",
       "RockPath_Round_Wide",
+      // camp
+      "CommonTree_5", "Pine_4", "Pine_5", "Fern_1", "Plant_1_Big", "Mushroom_Common", "Clover_1",
+      "Grass_Common_Short", "Pebble_Round_1", "Pebble_Round_3", "RockPath_Round_Small_1",
+      "RockPath_Round_Small_2", "RockPath_Round_Thin", "Flower_3_Single",
     ],
   },
 };
