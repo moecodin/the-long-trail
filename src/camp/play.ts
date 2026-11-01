@@ -13,9 +13,21 @@ const MAX_SPEED = 3.2;
 const TAP_SPEED = 1.9;
 /** How wide the traveler is, for bumping into things. */
 const BODY = 0.3;
-/** The camera hangs back and up from the traveler: a three-quarter view, like a diorama. */
-const CAM_OFFSET = new THREE.Vector3(0, 4.6, 7.4);
+/**
+ * The camera hangs back and up from the traveler: a three-quarter view, like a
+ * diorama. Dragging on the right side of the screen swings it around the
+ * traveler (yaw) and tips it up or down (pitch), within limits.
+ */
+const CAM_DIST = Math.hypot(4.6, 7.4);
 const CAM_LOOK = new THREE.Vector3(0, 1.1, 0);
+/** Where the camera starts: looking north, tipped down about 32 degrees. */
+const START_PITCH = Math.atan2(4.6, 7.4);
+/** How low and how high the camera can tip, in radians (about 12 and 62 degrees). */
+const MIN_PITCH = 0.21;
+const MAX_PITCH = 1.08;
+/** Radians of turn per pixel dragged. About half a turn across a phone screen. */
+const TURN_PER_PX = 0.0045;
+const TILT_PER_PX = 0.003;
 
 /** What you notice when you look at things. Each look shows the next line. */
 const NOTES: Record<string, string[]> = {
@@ -262,17 +274,25 @@ export function startCamp(opts: CampOptions): CampSession {
   }
 
   // for testing in the browser console (dev server only)
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__camp = { camp, pos, CAM_OFFSET };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__camp = { camp, pos, cam: () => ({ yaw, pitch }) };
 
-  const camPos = new THREE.Vector3();
+  // ---------- the orbit camera ----------
+  /** Which way the camera faces around the traveler: 0 looks north, and it grows turning left. */
+  let yaw = 0;
+  let pitch = START_PITCH;
+  /** Where your drags are taking it; the camera eases toward these so it feels smooth. */
+  let wantYaw = yaw;
+  let wantPitch = pitch;
+  /** The spot the camera circles around: just above the traveler, following gently. */
+  const focus = new THREE.Vector3().copy(pos).setY(0);
   const camLook = new THREE.Vector3();
-  const snapCamera = () => {
-    camPos.copy(pos).add(CAM_OFFSET);
-    camLook.copy(pos).add(CAM_LOOK);
-    camera.position.copy(camPos);
+  const placeCamera = () => {
+    const flat = Math.cos(pitch) * CAM_DIST;
+    camLook.copy(focus).add(CAM_LOOK);
+    camera.position.set(focus.x + Math.sin(yaw) * flat, focus.y + Math.sin(pitch) * CAM_DIST, focus.z + Math.cos(yaw) * flat);
     camera.lookAt(camLook);
   };
-  snapCamera();
+  placeCamera();
 
   return {
     ready: camp.ready,
@@ -290,14 +310,16 @@ export function startCamp(opts: CampOptions): CampSession {
       let want = 0;
       let dirX = 0, dirZ = 0;
       if (!paused && controls.steering) {
-        // The camera always looks north, so screen right is +x and screen down is +z.
+        // Push the stick up and you walk away from the camera, whichever way it faces.
         const m = controls.move;
         const amount = Math.min(1, Math.hypot(m.x, m.y));
         if (amount > 0.12) {
           target = null;
           standUp();
-          dirX = m.x / amount;
-          dirZ = m.y / amount;
+          const sx = m.x / amount, sy = m.y / amount;
+          const c = Math.cos(yaw), s = Math.sin(yaw);
+          dirX = sx * c + sy * s;
+          dirZ = -sx * s + sy * c;
           want = MAX_SPEED * amount;
         }
       } else if (!paused && target) {
@@ -364,12 +386,18 @@ export function startCamp(opts: CampOptions): CampSession {
         if (noteTimer <= 0 || (want > 0 && noteTimer < 2.2)) hideNote();
       }
 
-      // ---------- the camera follows gently ----------
-      const k = 1 - Math.exp(-dt * 4);
-      camPos.lerp(new THREE.Vector3().copy(pos).setY(0).add(CAM_OFFSET), k);
-      camLook.lerp(new THREE.Vector3().copy(pos).setY(0).add(CAM_LOOK), k);
-      camera.position.copy(camPos);
-      camera.lookAt(camLook);
+      // ---------- the camera follows gently, and turns when you drag ----------
+      const drag = controls.takeLook(dt);
+      if (!paused) {
+        // drag right to look right; drag up to look up (the camera dips lower)
+        wantYaw -= drag.x * TURN_PER_PX;
+        wantPitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, wantPitch + drag.y * TILT_PER_PX));
+      }
+      const turn = 1 - Math.exp(-dt * 14);
+      yaw += (wantYaw - yaw) * turn;
+      pitch += (wantPitch - pitch) * turn;
+      focus.lerp(new THREE.Vector3().copy(pos).setY(0), 1 - Math.exp(-dt * 4));
+      placeCamera();
 
       camp.update(dt, time);
     },
