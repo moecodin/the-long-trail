@@ -332,6 +332,8 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   chair.position.set(-1.9, 0, -0.2);
   chair.rotation.y = -Math.PI / 2 + 0.3; // facing the fire
   cottage.add(chair);
+  ph.armchair = chair;
+  ph.rug = rug;
 
   // table with the lantern, the journal and the walking stick
   const table = new THREE.Group();
@@ -355,6 +357,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   lantern.add(handle);
   lantern.position.set(-0.4, 0.84, 0);
   tableItems.add(lantern);
+  ph.lantern = lantern;
   const journal = box(0.3, 0.06, 0.38, flat("#6e3b2a"), 0.15, 0.85, 0.05);
   journal.rotation.y = 0.3;
   tableItems.add(journal);
@@ -363,6 +366,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   stick.position.set(0.78, 0.73, 0.15);
   stick.rotation.z = 0.25;
   tableItems.add(stick);
+  ph.stick = stick;
   const itemsLight = new THREE.PointLight("#ffd38a", 0, 3, 2);
   itemsLight.position.set(0, 1.4, 0);
   tableItems.add(itemsLight);
@@ -383,7 +387,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   cottage.add(windowGlow);
 
   // ---------- people ----------
-  const traveler = makePerson({ skin: "#d2a07a", hair: "#3a2a20", cloak: "#4f5a4a", scarf: "#8a7a5a", hairStyle: "short" });
+  const traveler = makePerson({ skin: "#d2a07a", hair: "#3a2a20", cloak: "#4f5a4a", scarf: "#8a7a5a", hairStyle: "short", cast: "unknown" });
   traveler.root.position.set(-1.9, 0.05, -0.2);
   traveler.root.rotation.y = -Math.PI / 2 + 0.3;
   traveler.setSit(1);
@@ -395,8 +399,9 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   blanket.rotation.x = -0.15;
   blanket.castShadow = true;
   traveler.root.add(blanket);
+  ph.blanket = blanket;
 
-  const della = makePerson({ skin: "#e3b896", hair: "#c9c4bc", cloak: "#6e5a7e", scarf: "#c4a8d0", hairStyle: "bun" }, 0.92);
+  const della = makePerson({ skin: "#e3b896", hair: "#c9c4bc", cloak: "#6e5a7e", scarf: "#c4a8d0", hairStyle: "bun", cast: "della" }, 0.92);
   della.root.position.set(ROOM_W / 2 + 1.6, 0, doorZ);
   della.root.rotation.y = -Math.PI / 2;
   della.root.visible = false;
@@ -425,6 +430,8 @@ export function createWorld(canvas: HTMLCanvasElement): World {
   scene.add(rain);
 
   // ---------- state ----------
+  /** Extra per-frame work, such as animating the character models. */
+  const frameHooks: ((dt: number) => void)[] = [];
   let storm = 0;
   let lanternAmount = 0;
   let flashLevel = 0;
@@ -515,6 +522,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
       itemsLight.intensity = itemsGlow * 3;
       (lanternGlass.material as THREE.MeshStandardMaterial).emissiveIntensity = itemsGlow * 1.5;
 
+      for (const f of frameHooks) f(dt);
       renderer.render(scene, camera);
     },
     resize() {
@@ -527,7 +535,7 @@ export function createWorld(canvas: HTMLCanvasElement): World {
     },
   };
   world.dressWithKits = () =>
-    dressWorld({ scene, cottage, ph, doorPivot, tableItems, journal, groundHeight, fireX, doorZ });
+    dressWorld({ scene, cottage, ph, doorPivot, tableItems, journal, groundHeight, fireX, doorZ, traveler, della, onFrame: (f) => frameHooks.push(f) });
   world.resize();
   return world;
 }

@@ -9,7 +9,10 @@
 
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { ROOM, WIN_X } from "./world";
+import type { Person } from "./people";
+import { loadKayKit, wearKayKit } from "./kaykitPeople";
 
 export interface Placeholders {
   walls: THREE.Object3D[];
@@ -22,6 +25,11 @@ export interface Placeholders {
   door?: THREE.Object3D;
   /** The fireplace's plain stone material, which gets the kit's brick texture. */
   stone?: THREE.MeshStandardMaterial;
+  armchair?: THREE.Object3D;
+  rug?: THREE.Mesh;
+  lantern?: THREE.Group;
+  stick?: THREE.Mesh;
+  blanket?: THREE.Mesh;
 }
 
 interface DressContext {
@@ -34,6 +42,10 @@ interface DressContext {
   groundHeight(x: number, z: number): number;
   fireX: number;
   doorZ: number;
+  traveler: Person;
+  della: Person;
+  /** Run something every frame (used to animate the people). */
+  onFrame(f: (dt: number) => void): void;
 }
 
 const BASE = `${import.meta.env.BASE_URL}models/`;
@@ -109,8 +121,54 @@ function seeded(seed: number) {
   };
 }
 
+/**
+ * A piece of a kit's texture sheet as its own material. Quaternius props share
+ * "trim sheets" (many surfaces painted on one image); our hand-built pieces
+ * only want one patch of it. u/v/w/h are in 0-1 image coordinates from the top left.
+ */
+function sheetPatch(src: THREE.Texture, u: number, v: number, w: number, h: number, color = "#ffffff") {
+  const map = src.clone();
+  map.flipY = false; // glTF textures are stored top-down
+  map.wrapS = map.wrapT = THREE.RepeatWrapping;
+  map.repeat.set(w, h);
+  map.offset.set(u, v);
+  map.needsUpdate = true;
+  return new THREE.MeshStandardMaterial({ map, color, roughness: 0.9 });
+}
+
+/** A cozy wing-backed armchair, built from rounded boxes and dressed in kit textures. */
+function buildArmchair(wood: THREE.Material, cloth: THREE.Material) {
+  const chair = new THREE.Group();
+  const part = (w: number, h: number, d: number, m: THREE.Material, x: number, y: number, z: number, r = 0.05) => {
+    const mesh = new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 3, r), m);
+    mesh.position.set(x, y, z);
+    mesh.castShadow = mesh.receiveShadow = true;
+    chair.add(mesh);
+    return mesh;
+  };
+  // short turned legs
+  for (const [x, z] of [[-0.38, -0.33], [0.38, -0.33], [-0.38, 0.33], [0.38, 0.33]]) {
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.025, 0.12, 8), wood);
+    leg.position.set(x, 0.06, z);
+    chair.add(leg);
+  }
+  part(0.92, 0.24, 0.82, cloth, 0, 0.24, 0, 0.06); // base
+  part(0.7, 0.12, 0.68, cloth, 0, 0.41, 0.05, 0.05); // seat cushion
+  const back = part(0.86, 0.78, 0.18, cloth, 0, 0.74, -0.33, 0.07);
+  back.rotation.x = -0.12;
+  for (const side of [-1, 1]) {
+    part(0.14, 0.3, 0.8, cloth, side * 0.4, 0.5, 0, 0.06); // arm
+    part(0.16, 0.04, 0.82, wood, side * 0.4, 0.67, 0.01, 0.015); // wooden arm cap
+    const wing = part(0.12, 0.42, 0.22, cloth, side * 0.4, 0.92, -0.26, 0.05);
+    wing.rotation.x = -0.12;
+  }
+  return chair;
+}
+
 export async function dressWorld(ctx: DressContext): Promise<void> {
   const { scene, cottage, ph } = ctx;
+  // The people load alongside everything else.
+  const peopleReady = dressPeople(ctx).catch((err) => console.warn("Character models did not load:", err));
   const W = ROOM.W, D = ROOM.D;
   const OUT = 0.31; // kit walls sit this far outside their inner face
 
@@ -196,6 +254,55 @@ export async function dressWorld(ctx: DressContext): Promise<void> {
       model("props", "Bucket_Wooden_1"),
     ]);
   const room = new THREE.Group();
+  // ---------- hand-built pieces dressed in kit textures ----------
+  const furnitureMap = ((table.getObjectByProperty("type", "Mesh") as THREE.Mesh).material as THREE.MeshStandardMaterial).map!;
+  const clothMap = await new THREE.TextureLoader(manager).loadAsync(`${BASE}props/T_Trim_Cloth_BaseColor.png`);
+  clothMap.colorSpace = THREE.SRGBColorSpace;
+  // a long plank from the furniture sheet, and the soft mottled cloth patch
+  const wood = sheetPatch(furnitureMap, 0, 0, 1, 0.12);
+  const cloth = sheetPatch(clothMap, 0.62, 0.05, 0.28, 0.3, "#6f8f6a");
+  if (ph.armchair) {
+    const armchair = buildArmchair(wood, cloth);
+    armchair.position.copy(ph.armchair.position);
+    armchair.rotation.copy(ph.armchair.rotation);
+    ph.armchair.visible = false;
+    cottage.add(armchair);
+  }
+  // the rug sat exactly on the floor boards and flickered; lift it and give it cloth
+  if (ph.rug) {
+    ph.rug.position.y = 0.035;
+    ph.rug.material = sheetPatch(clothMap, 0.62, 0.05, 0.28, 0.3, "#b0574c");
+  }
+  // the sleeper's blanket: soft rounded wool instead of a plain box
+  if (ph.blanket) {
+    ph.blanket.geometry = new RoundedBoxGeometry(0.56, 0.34, 0.6, 3, 0.1);
+    ph.blanket.material = sheetPatch(clothMap, 0.62, 0.05, 0.28, 0.3, "#c08a4a");
+  }
+  // walking stick: real wood grain, a little knob on top
+  if (ph.stick) {
+    ph.stick.material = wood;
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), wood);
+    knob.position.y = 0.76;
+    ph.stick.add(knob);
+  }
+  // Della's lantern: dark iron frame with corner posts and a peaked cap
+  if (ph.lantern) {
+    const iron = new THREE.MeshStandardMaterial({ color: "#3b3631", metalness: 0.6, roughness: 0.5 });
+    for (const c of ph.lantern.children) {
+      const m = c as THREE.Mesh;
+      if (m.isMesh && !(m.material as THREE.MeshStandardMaterial).transparent) m.material = iron;
+    }
+    for (const [x, z] of [[-0.085, -0.085], [0.085, -0.085], [-0.085, 0.085], [0.085, 0.085]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.3, 0.018), iron);
+      post.position.set(x, 0.15, z);
+      ph.lantern.add(post);
+    }
+    const cap = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.1, 4), iron);
+    cap.rotation.y = Math.PI / 4;
+    cap.position.y = 0.37;
+    ph.lantern.add(cap);
+  }
+
   // the table keeps its old spot; the kit table is long, so it is shortened a bit
   const t = ph.table.position;
   room.add(place(table, t.x, 0, t.z, 0, [0.55, 1, 0.8]));
@@ -279,4 +386,12 @@ export async function dressWorld(ctx: DressContext): Promise<void> {
   for (const o of ph.forest) o.visible = false;
 
   scene.add(outside);
+  await peopleReady;
+}
+
+async function dressPeople(ctx: DressContext) {
+  const loaded = await loadKayKit(loader, BASE);
+  const castFor = (look: { cast?: "unknown" | "ren" | "mara" | "sol" | "della" }) => look.cast ?? "unknown";
+  ctx.onFrame(wearKayKit(ctx.traveler, loaded, castFor, ctx.traveler.look));
+  ctx.onFrame(wearKayKit(ctx.della, loaded, castFor, ctx.della.look, 0.92));
 }
