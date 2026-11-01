@@ -15,6 +15,7 @@ import { createWorld, WIN_X } from "./scene/world";
 import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
+import { Sync } from "./journal/sync";
 import { campHint, chapterCard, creationScreen, say, skipButton, storybook, titleScreen } from "./ui/screens";
 import { startCamp, type CampSession } from "./camp/play";
 
@@ -52,7 +53,7 @@ rotateNotice.innerHTML = `<div class="rotate-phone"></div><p>Turn your phone sid
 document.body.appendChild(rotateNotice);
 
 // 1. The satchel comes first, before any 3D, so logging is never behind a loading screen.
-mountSatchel({
+const journal = mountSatchel({
   muted: save.muted,
   onOpen: () => {
     journalOpen = true;
@@ -78,6 +79,24 @@ mountSatchel({
     sessionStorage.setItem(CHANGE_KEY, "1");
     location.reload();
   },
+  onChange: () => sync.schedule(),
+  onRested: () => camp?.note("You bank the fire and crawl into your tent. The day is written down. Goodnight."),
+});
+// The online backup (only does anything once you've signed in from the journal).
+// The Claude preview link can't reach Supabase, so it leaves the backup out.
+const sync = new Sync(journal, {
+  get: () => ({ data: { traveler: save.traveler, introSeen: save.introSeen, portraitStage: save.portraitStage }, updated: save.updated ?? 0 }),
+  // progress from another device: take it, but keep this device's sound setting
+  apply: (data, updated) => {
+    Object.assign(save, data, { updated });
+    writeSave(save, false);
+  },
+});
+if (import.meta.env.MODE !== "preview") journal.sync = sync;
+sync.onStatus = () => journal.refresh();
+// Coming back to the game on a new day shows yesterday's page first.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && mode === "camp") journal.greetNewDay();
 });
 
 // 2. The 3D world.
@@ -329,6 +348,7 @@ async function goToCamp(firstTime: boolean) {
     look: lookFor(t),
     onFirstMove: () => hint?.(),
     tick: () => audio.tick(),
+    onRest: () => journal.open("rest"),
   });
   await camp.ready;
   updatePause();
@@ -339,6 +359,7 @@ async function goToCamp(firstTime: boolean) {
   await new Promise((r) => setTimeout(r, 300));
   fadeBlack(false);
   hint = campHint(firstTime);
+  setTimeout(() => journal.greetNewDay(), 1200);
 }
 
 // ---------- start ----------

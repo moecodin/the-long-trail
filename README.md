@@ -7,6 +7,40 @@ What's playable so far: the opening (**The Lantern Wakes** intro and the
 mirror where you pick and name your traveler), then **camp** (Milestone 1),
 where you walk your traveler around a clearing at dusk.
 
+## The satchel journal (the tracker)
+
+Tap the satchel in the top-right corner, on any screen. The first time, it asks
+a few things (units, height, age, activity, pace) and works out daily targets
+for calories, protein, fiber and water. You can nudge the calorie number.
+
+- **Today:** what you've eaten, protein and fiber bars, and the canteen (tap a
+  cup to fill it).
+- **Log:** a meal's name and calories (protein, carbs, fat and fiber are
+  optional). Tick "Takeout" for an inn night. Meals are saved to **Meals** so
+  the next time is one tap.
+- **Trends:** the last 7 or 30 days as small charts. Tap a bar to see the day.
+- **Scale:** weigh-ins and weekly averages. The game itself only ever reads the
+  weekly averages, never a single day.
+- **Rest at camp:** walk to the campfire and press **Rest** (or use the button on
+  Today). Pick a mood and a line, or write your own. If you forget, the journal
+  closes the day for you, and the next day it shows you yesterday so you can
+  fix anything you missed. A day runs until 4 a.m.
+- **Setup:** change your details, hide calorie numbers, and **back up** your
+  journal by signing in with an email link (Supabase). Everything is saved on
+  the phone first, so it works offline and catches up when you're back online.
+
+### The backup (Supabase)
+
+The table and its security rules are in `supabase/schema.sql` (run once in the
+Supabase SQL Editor). The game only holds the project's publishable key, which
+is meant to be public. Row Level Security keeps each player's rows to
+themselves. **Never put a secret key in this repo.** In Supabase under
+Authentication → URL Configuration, the Site URL is the GitHub Pages address and
+`https://moecodin.github.io/the-long-trail/**` and `http://localhost:5173/**`
+are allowed redirect URLs. Supabase's built-in email only sends a few emails an
+hour, and only to members of the Supabase team. Set up your own SMTP (for example
+Resend) before other people play.
+
 ## Walking around camp
 
 - **Drag anywhere** on the screen: a thumb joystick appears under your finger.
@@ -14,7 +48,7 @@ where you walk your traveler around a clearing at dusk.
 - **Tap a spot** to walk there. Tap a thing (the tent, the fire, the sign) to
   walk over and look at it.
 - **The round button** in the bottom right shows up when you're next to
-  something: Look, Read, or Sit on the bench by the fire.
+  something: Look, Read, Sit on the bench, or Rest at the fire.
 - On a computer: WASD or arrow keys to walk (hold Shift to jog), E or Space
   for the button.
 - Add `?from=camp` to the address to skip straight to camp.

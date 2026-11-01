@@ -20,7 +20,6 @@ const CAM_LOOK = new THREE.Vector3(0, 1.1, 0);
 /** What you notice when you look at things. Each look shows the next line. */
 const NOTES: Record<string, string[]> = {
   fire: [
-    "The fire crackles and pops. Soon you'll come back here to rest at the end of each day.",
     "Sparks drift up toward the first stars.",
     "Della's kindling, dry as a bone. She thinks of everything.",
   ],
@@ -50,6 +49,8 @@ export interface CampOptions {
   onFirstMove?(): void;
   /** A soft click for the action button. */
   tick?(): void;
+  /** The traveler wants to rest at the campfire (opens the journal's Rest page). */
+  onRest?(): void;
 }
 
 export interface CampSession {
@@ -61,6 +62,8 @@ export interface CampSession {
   resize(): void;
   /** How far the traveler is from the campfire, in meters (for the fire's sound). */
   distanceToFire(): number;
+  /** Show a little note at the bottom of the screen. */
+  note(text: string): void;
 }
 
 export function startCamp(opts: CampOptions): CampSession {
@@ -207,6 +210,12 @@ export function startCamp(opts: CampOptions): CampSession {
       else sitDown();
       return;
     }
+    if (spot.id === "fire" && opts.onRest) {
+      facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
+      hideNote();
+      opts.onRest();
+      return;
+    }
     // turn to face it, then say what you notice
     facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
     const lines = NOTES[spot.id] ?? [];
@@ -267,6 +276,7 @@ export function startCamp(opts: CampOptions): CampSession {
 
   return {
     ready: camp.ready,
+    note: showNote,
     setPaused(p) {
       paused = p;
       controls.enabled = !p;

@@ -9,3 +9,8 @@
 ## Music
 
 - "The Lantern Wakes" by MoeCodin, made in BeepBox.
+
+## Fonts
+
+- **Patrick Hand** by Patrick Wagesreiter, the journal's handwriting (SIL Open Font License 1.1). License: `src/assets/fonts/OFL-PatrickHand.txt`.
+- **EB Garamond** by Georg Duffner and Octavio Pardo, the journal's headings and labels (SIL Open Font License 1.1). License: `src/assets/fonts/OFL-EBGaramond.txt`.
