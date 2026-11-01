@@ -11,6 +11,7 @@
 import * as THREE from "three";
 import { makePerson, type PersonLook } from "../scene/people";
 import { loadKayKit, wearKayKit } from "../scene/kaykitPeople";
+import { loadSatchel, wearSatchel } from "../scene/satchel";
 import { BASE, instanced, loader, model, place, seeded } from "../scene/kits";
 
 /** Round things you can't walk through: x, z and radius in meters. */
@@ -397,9 +398,15 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
 
   // ---------- dress with the kit models ----------
   async function dress() {
-    const people = loadKayKit(loader, BASE).then((loaded) => {
+    // the traveler's satchel: "Adventure Satchel" by Reidicus (CC BY 4.0, see CREDITS.md)
+    const satchel = loadSatchel(loader, BASE).catch((err) => {
+      console.warn("Satchel model did not load; the traveler goes without.", err);
+      return null;
+    });
+    const people = Promise.all([loadKayKit(loader, BASE), satchel]).then(([loaded, bag]) => {
       const castFor = (l: PersonLook) => l.cast ?? "unknown";
-      frameHooks.push(wearKayKit(traveler, loaded, castFor, traveler.look));
+      const gear = bag ? (m: THREE.Object3D) => wearSatchel(m, bag) : undefined;
+      frameHooks.push(wearKayKit(traveler, loaded, castFor, traveler.look, 1, gear));
     });
 
     const [kitBench, kitBarrel, kitCrate, apples, bag, bucket, pot, rope, lantern, wagon, fence] = await Promise.all([

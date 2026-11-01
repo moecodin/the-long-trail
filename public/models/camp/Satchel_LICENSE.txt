@@ -1,0 +1,11 @@
+Model Information:
+* title:	Adventure Satchel
+* source:	https://sketchfab.com/3d-models/adventure-satchel-93244198d47b420fa5b0d9a551545658
+* author:	Reidicus (https://sketchfab.com/Reidicus)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Adventure Satchel" (https://sketchfab.com/3d-models/adventure-satchel-93244198d47b420fa5b0d9a551545658) by Reidicus (https://sketchfab.com/Reidicus) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
