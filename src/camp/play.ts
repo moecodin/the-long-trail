@@ -21,6 +21,9 @@ const BODY = 0.3;
  * traveler (yaw) and tips it up or down (pitch), within limits.
  */
 const CAM_DIST = Math.hypot(4.6, 7.4);
+/** How close and how far pinch / the mouse wheel can take the camera, in meters. */
+const MIN_DIST = 4;
+const MAX_DIST = 14;
 const CAM_LOOK = new THREE.Vector3(0, 1.1, 0);
 /** Where the camera starts: looking north, tipped down about 32 degrees. */
 const START_PITCH = Math.atan2(4.6, 7.4);
@@ -286,7 +289,7 @@ export function startCamp(opts: CampOptions): CampSession {
   }
 
   // for testing in the browser console (dev server only)
-  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__camp = { camp, pos, cam: () => ({ yaw, pitch }) };
+  if (import.meta.env.DEV) (window as unknown as Record<string, unknown>).__camp = { camp, pos, cam: () => ({ yaw, pitch, dist, wantDist }) };
 
   // ---------- the orbit camera ----------
   /** Which way the camera faces around the traveler: 0 looks north, and it grows turning left. */
@@ -295,13 +298,15 @@ export function startCamp(opts: CampOptions): CampSession {
   /** Where your drags are taking it; the camera eases toward these so it feels smooth. */
   let wantYaw = yaw;
   let wantPitch = pitch;
+  let dist = CAM_DIST;
+  let wantDist = dist;
   /** The spot the camera circles around: just above the traveler, following gently. */
   const focus = new THREE.Vector3().copy(pos).setY(0);
   const camLook = new THREE.Vector3();
   const placeCamera = () => {
-    const flat = Math.cos(pitch) * CAM_DIST;
+    const flat = Math.cos(pitch) * dist;
     camLook.copy(focus).add(CAM_LOOK);
-    camera.position.set(focus.x + Math.sin(yaw) * flat, focus.y + Math.sin(pitch) * CAM_DIST, focus.z + Math.cos(yaw) * flat);
+    camera.position.set(focus.x + Math.sin(yaw) * flat, focus.y + Math.sin(pitch) * dist, focus.z + Math.cos(yaw) * flat);
     camera.lookAt(camLook);
   };
   placeCamera();
@@ -405,7 +410,10 @@ export function startCamp(opts: CampOptions): CampSession {
         wantYaw -= drag.x * TURN_PER_PX;
         wantPitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, wantPitch + drag.y * TILT_PER_PX));
       }
+      const zoom = controls.takeZoom(dt);
+      if (!paused) wantDist = Math.min(MAX_DIST, Math.max(MIN_DIST, wantDist * zoom));
       const turn = 1 - Math.exp(-dt * 14);
+      dist += (wantDist - dist) * turn;
       yaw += (wantYaw - yaw) * turn;
       pitch += (wantPitch - pitch) * turn;
       focus.lerp(new THREE.Vector3().copy(pos).setY(0), 1 - Math.exp(-dt * 4));

@@ -7,8 +7,10 @@
 //   Quick tap           walk to that spot (or to the thing you tapped).
 //   Mouse               same as touch: drag on the left half to walk, on the
 //                       right half (or with the right button anywhere) to look.
+//   Pinch               two fingers on the same side zoom the camera in and out.
+//   Mouse wheel         zoom in and out.
 //   Keyboard            WASD or arrow keys to walk, Q / R to turn the camera,
-//                       E / Space / Enter for the action button.
+//                       + / - to zoom, E / Space / Enter for the action button.
 
 import { el } from "../ui/dom";
 
@@ -30,7 +32,10 @@ const STICK_SIDE = 0.5;
 /** How fast Q / R turn the camera, in radians per second. */
 const KEY_TURN = 1.8;
 
-type Role = "stick" | "look";
+/** How fast + / - zoom: the camera distance changes by this factor per second. */
+const KEY_ZOOM = 1.8;
+
+type Role = "stick" | "look" | "pinch";
 interface Finger {
   id: number;
   role: Role;
@@ -47,6 +52,8 @@ export class Controls {
   readonly move = { x: 0, y: 0 };
   /** How far the camera fingers have dragged since the last takeLook(), in pixels. */
   private look = { x: 0, y: 0 };
+  /** How much to multiply the camera distance by since the last takeZoom(): below 1 is closer. */
+  private zoom = 1;
   enabled = true;
 
   private base = el("div", "stick-base");
@@ -76,6 +83,13 @@ export class Controls {
     surface.classList.add("walk-surface");
     // the right mouse button turns the camera, so keep the menu out of the way
     on(surface, "contextmenu", (e) => e.preventDefault());
+    on(surface, "wheel", (e) => {
+      e.preventDefault();
+      if (!this.enabled) return;
+      // trackpads send small steps, mouse wheels big ones; both feel fine this way
+      const lines = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      this.zoom *= Math.exp(Math.max(-200, Math.min(200, lines)) * 0.0015);
+    });
     on(surface, "pointerdown", (e) => this.down(e));
     on(window, "pointermove", (e) => this.moveTo(e));
     on(window, "pointerup", (e) => this.up(e));
@@ -122,6 +136,18 @@ export class Controls {
     return out;
   }
 
+  /** How much to scale the camera distance since last asked (1 = no change). Call once a frame. */
+  takeZoom(dt: number): number {
+    let out = this.zoom;
+    this.zoom = 1;
+    if (this.enabled) {
+      const k = this.keys;
+      const dir = (k.has("-") || k.has("_") ? 1 : 0) - (k.has("=") || k.has("+") ? 1 : 0);
+      out *= Math.pow(KEY_ZOOM, dir * dt);
+    }
+    return out;
+  }
+
   /** True while a finger or key is steering. */
   get steering() {
     return this.move.x !== 0 || this.move.y !== 0;
@@ -131,6 +157,7 @@ export class Controls {
   release() {
     this.fingers.clear();
     this.look.x = this.look.y = 0;
+    this.zoom = 1;
     this.stick.x = this.stick.y = 0;
     this.base.classList.remove("in");
     this.update();
@@ -148,9 +175,18 @@ export class Controls {
     e.preventDefault();
     const left = e.clientX < window.innerWidth * STICK_SIDE;
     const role: Role = e.pointerType === "mouse" && e.button !== 0 ? "look" : left ? "stick" : "look";
-    // one finger per job: a second finger on the same side is ignored
-    for (const f of this.fingers.values()) if (f.role === role) return;
     const { clientX: x, clientY: y } = e;
+    // A second finger on the same side as another one turns the pair into a pinch.
+    for (const f of this.fingers.values()) {
+      if (f.role === "pinch") return; // already pinching: ignore extra fingers
+      if (f.role !== role) continue;
+      if (e.pointerType === "mouse") return;
+      if (f.role === "stick") this.stopStick();
+      f.role = "pinch";
+      f.dragging = true;
+      this.fingers.set(e.pointerId, { id: e.pointerId, role: "pinch", x, y, lastX: x, lastY: y, t: performance.now(), dragging: true });
+      return;
+    }
     this.fingers.set(e.pointerId, { id: e.pointerId, role, x, y, lastX: x, lastY: y, t: performance.now(), dragging: false });
   }
 
@@ -169,6 +205,17 @@ export class Controls {
         this.base.style.top = `${f.y}px`;
         this.base.classList.add("in");
       }
+    }
+    if (f.role === "pinch") {
+      const other = [...this.fingers.values()].find((o) => o !== f && o.role === "pinch");
+      const before = other ? Math.hypot(f.lastX - other.lastX, f.lastY - other.lastY) : 0;
+      f.lastX = e.clientX;
+      f.lastY = e.clientY;
+      if (!other) return;
+      const after = Math.hypot(f.lastX - other.lastX, f.lastY - other.lastY);
+      // fingers spreading apart bring the camera closer
+      if (before > 20 && after > 20) this.zoom *= before / after;
+      return;
     }
     if (!f.dragging) return;
     if (f.role === "look") {
@@ -190,14 +237,16 @@ export class Controls {
     if (!f) return;
     this.fingers.delete(e.pointerId);
     const wasTap = !f.dragging && performance.now() - f.t < TAP_TIME;
-    if (f.role === "stick") {
-      this.stick.x = this.stick.y = 0;
-      this.knob.style.transform = "";
-      this.base.classList.remove("in");
-      this.update();
-    }
+    if (f.role === "stick") this.stopStick();
     const leftClick = e.pointerType !== "mouse" || e.button === 0;
     if (wasTap && leftClick && !cancelled && this.enabled) this.events.onTap(f.x, f.y);
+  }
+
+  private stopStick() {
+    this.stick.x = this.stick.y = 0;
+    this.knob.style.transform = "";
+    this.base.classList.remove("in");
+    this.update();
   }
 
   private update() {
