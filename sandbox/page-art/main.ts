@@ -89,7 +89,7 @@ function stars(n: number) {
     a.push(Math.cos(th) * 300 * Math.cos(ph), 300 * Math.sin(ph), Math.sin(th) * 300 * Math.cos(ph));
   }
   g.setAttribute("position", new THREE.Float32BufferAttribute(a, 3));
-  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: "#fff4d8", size: 2.2, sizeAttenuation: false, fog: false })));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: "#fff4d8", size: 4.5, sizeAttenuation: false, fog: false })));
 }
 function skyDome(top: string, bottom: string) {
   const m = new THREE.ShaderMaterial({
@@ -128,7 +128,7 @@ async function traveler(x: number, z: number, ry: number) {
 
 // ---------- the three pages ----------
 async function page1() {
-  renderer.toneMappingExposure = 1.7;
+  renderer.toneMappingExposure = 2.0;
   // Every so often, the lantern on the Summit lights itself. (night, the lit peak)
   skyDome("#1a2656", "#6a5f8a"); stars(500);
   scene.fog = new THREE.Fog("#4a4870", 60, 260);
@@ -137,24 +137,25 @@ async function page1() {
   const peak = mountain(40, 56, "#e6ecf8", "#6a7090", 11); peak.position.set(0, 0, -110); scene.add(peak);
   const p2 = mountain(40, 42, "#c7cfe0", "#4a4f66", 9); p2.position.set(-55, 0, -110); scene.add(p2);
   const p3 = mountain(36, 36, "#c7cfe0", "#4a4f66", 9); p3.position.set(52, 0, -100); scene.add(p3);
-  hills("#2c3b2a");
+  hills("#46603e");
+  const front = new THREE.DirectionalLight("#c9b8ff", 0.8); front.position.set(10, 20, 120); scene.add(front);
   await summitLantern(0, 55.2, -110, 4);
   await scatter(["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"], 26, (i) => [(i % 2 ? 1 : -1) * (18 + rnd() * 30) + 6, 40 - rnd() * 40], () => 1.2 + rnd() * 1.0);
   await scatter(["Rock_Medium_1", "Rock_Medium_2", "Grass_Wispy_Tall", "Fern_1"], 10, () => [(rnd() - 0.5) * 18 + 6, 50 - rnd() * 6], () => 0.5 + rnd() * 0.4);
   camera.position.set(6, 6, 70); camera.lookAt(0, 22, -110);
 }
 async function page2() {
-  renderer.toneMappingExposure = 1.4;
+  renderer.toneMappingExposure = 1.7;
   // Nobody knows why. (a village cottage at night, someone at the window looking up)
   skyDome("#141a3a", "#4b4566"); stars(400);
   scene.fog = new THREE.Fog("#2d2d48", 25, 160);
   scene.add(new THREE.HemisphereLight("#7a86c4", "#20261c", 0.8));
   const moonL = new THREE.DirectionalLight("#b8c6ff", 1.4); moonL.position.set(30, 40, 20); moonL.castShadow = true; scene.add(moonL);
   const moonS = new THREE.Mesh(new THREE.SphereGeometry(5, 24, 12), new THREE.MeshBasicMaterial({ color: "#fff2c8", fog: false }));
-  moonS.position.set(55, 60, -120); scene.add(moonS); glow("rgba(255,240,200,0.5)", 40, 55, 60, -121, 0.4);
-  hills("#334430");
-  const peak = mountain(40, 60, "#d5dcec", "#545a74", 11); peak.position.set(-30, 0, -140); scene.add(peak);
-  await summitLantern(-30, 59.2, -140, 3);
+  moonS.position.set(-120, 52, -150); scene.add(moonS); glow("rgba(255,240,200,0.5)", 40, -120, 52, -151, 0.4);
+  hills("#4a6440");
+  const peak = mountain(46, 52, "#e2e8f6", "#6c7294", 11); peak.position.set(15, 0, -165); scene.add(peak);
+  await summitLantern(15, 51.2, -165, 3.5);
   // cottage, 4 x 4 m, built from Medieval Village kit pieces
   const [wall, winWall, doorWall, win, corner, roof, chim, door] = await Promise.all([
     model("village", "Wall_Plaster_Straight"), model("village", "Wall_Plaster_Window_Wide_Round"), model("village", "Wall_Plaster_Door_Round"),
@@ -196,9 +197,9 @@ async function page3() {
     const t = i / 40; const z = 6 - t * 60; const x = Math.sin(t * 5) * 4 * (1 - t * 0.5);
     put(await model("nature", i % 3 ? "RockPath_Round_Small_1" : "RockPath_Round_Wide"), x + (rnd() - 0.5), 0.02, z, rnd() * 6, 0.8);
   }
-  await traveler(Math.sin(0.2 * 5) * 4 * 0.9 + 0.3, 6 - 0.2 * 60, Math.PI + 0.35);
+  await traveler(Math.sin(0.25 * 5) * 4 * 0.88 + 0.2, 6 - 0.25 * 60, Math.PI + 0.3);
   await scatter(["CommonTree_1", "CommonTree_2", "CommonTree_4", "CommonTree_5", "Pine_3"], 18, (i) => [(i % 2 ? 1 : -1) * (9 + rnd() * 18), -5 - rnd() * 50], () => 0.9 + rnd() * 0.5);
-  await scatter(["Grass_Common_Tall", "Grass_Wispy_Tall", "Flower_3_Group", "Flower_4_Group", "Bush_Common_Flowers", "Clover_1"], 70, () => {
+  await scatter(["Grass_Common_Tall", "Grass_Wispy_Tall", "Flower_3_Group", "Flower_4_Group", "Clover_1", "Fern_1"], 70, () => {
     let x = 0; const z = 4 - rnd() * 40; do { x = (rnd() - 0.5) * 30; } while (Math.abs(x - Math.sin(((6 - z) / 60) * 5) * 4) < 1.6); return [x, z];
   }, () => 0.35 + rnd() * 0.3);
   camera.position.set(5, 2.6, 4); camera.lookAt(1, 6.5, -60);
@@ -249,10 +250,10 @@ const PAINT = new THREE.ShaderMaterial({
       col *= .9 + .12*grain;
       col *= .96 + .08*pool;
       // vignette that fades into the parchment color
-      vec2 d = abs(vUv-.5)*2.; float r = pow(pow(d.x,5.)+pow(d.y*1.04,5.),.2)*.5 + (fbm(vUv*7.)-.5)*.16 + (fbm(vUv*40.)-.5)*.04;
+      vec2 d = abs(vUv-.5)*2.; float r = pow(pow(d.x,5.)+pow(d.y*1.04,5.),.2)*.5 + (fbm(vUv*6.)-.5)*.11 + (fbm(vUv*40.)-.5)*.03;
       float vig = smoothstep(.485,.465, r);
       col *= mix(1., .9, smoothstep(.4,.48, r)); // pigment darkens where the wash dries at its edge
-      col = mix(vec3(.96,.9,.78), col, vig);
+      col = mix(vec3(1.), col, vig); // white outside the wash, so the page shows through (multiply)
       gl_FragColor = vec4(col,1.);
     }`,
 });
