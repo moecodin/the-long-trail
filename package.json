@@ -11,6 +11,7 @@
     "music": "node tools/render-beepbox.mjs music/lantern-wakes-v1.txt public/audio/lantern-wakes-v1"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "three": "^0.180.0"
   },
   "devDependencies": {

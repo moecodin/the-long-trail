@@ -232,7 +232,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
     new THREE.PointsMaterial({ color: "#ffc070", size: 0.06, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }),
   );
   fire.add(sparks);
-  spots.push({ id: "fire", label: "Look", x: 0, z: 0, range: 1.9, standX: 0, standZ: 1.5, tapTargets: [fire] });
+  spots.push({ id: "fire", label: "Rest", x: 0, z: 0, range: 1.9, standX: 0, standZ: 1.5, tapTargets: [fire] });
 
   // ---------- simple stand-in shapes (the kit models replace these) ----------
   const stand = new THREE.Group();

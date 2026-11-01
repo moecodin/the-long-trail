@@ -10,6 +10,8 @@ export interface Save {
   /** 1 to 4: how clear the mirror portrait is (one step per act). */
   portraitStage: 1 | 2 | 3 | 4;
   muted: boolean;
+  /** When this last changed (ms), for syncing. */
+  updated?: number;
 }
 
 const KEY = "longtrail.save.v1";
@@ -26,7 +28,9 @@ export function loadSave(): Save {
   }
 }
 
-export function writeSave(save: Save): void {
+/** Save to this device. `touch` marks it changed (so it syncs); synced-in saves pass false. */
+export function writeSave(save: Save, touch = true): void {
+  if (touch) save.updated = Date.now();
   try {
     localStorage.setItem(KEY, JSON.stringify(save));
   } catch {

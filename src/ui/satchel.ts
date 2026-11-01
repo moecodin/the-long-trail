@@ -1,8 +1,9 @@
 // The satchel journal button. It sits in the corner of every screen, even the
-// intro, because logging always comes first. For now it opens a placeholder
-// page; the real journal (meals, water, weigh-ins) arrives in Milestone 2.
+// intro, because logging always comes first. It opens the journal (see
+// src/journal/journal.ts).
 
-import { el, escapeHtml } from "./dom";
+import { el } from "./dom";
+import { Journal, type JournalOptions } from "../journal/journal";
 
 const SATCHEL_ICON = `<svg viewBox="0 0 64 64" aria-hidden="true">
   <path d="M20 22 Q20 8 32 8 Q44 8 44 22" fill="none" stroke="#5a3a22" stroke-width="4" stroke-linecap="round"/>
@@ -15,18 +16,14 @@ const SATCHEL_ICON = `<svg viewBox="0 0 64 64" aria-hidden="true">
 const SOUND_ON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>`;
 const SOUND_OFF = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor"/><path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`;
 
-export interface SatchelOptions {
-  onOpen(): void;
-  onClose(): void;
+export interface SatchelOptions extends JournalOptions {
   onToggleSound(): boolean;
   muted: boolean;
-  onReplayIntro(): void;
-  /** Go back to the mirror to pick a different traveler or name. */
-  onChangeTraveler(): void;
-  travelerName(): string | null;
 }
 
-export function mountSatchel(opts: SatchelOptions): void {
+/** Put the sound and satchel buttons in the corner. Returns the journal they open. */
+export function mountSatchel(opts: SatchelOptions): Journal {
+  const journal = new Journal(opts);
   const bar = el("div", "corner-bar");
   const sound = el("button", "round-btn sound-btn", opts.muted ? SOUND_OFF : SOUND_ON);
   sound.setAttribute("aria-label", "Sound on or off");
@@ -43,43 +40,8 @@ export function mountSatchel(opts: SatchelOptions): void {
 
   satchel.addEventListener("click", (e) => {
     e.stopPropagation();
-    open();
+    if (journal.isOpen) journal.close();
+    else journal.open();
   });
-
-  function open() {
-    opts.onOpen();
-    const name = opts.travelerName();
-    const panel = el(
-      "div",
-      "journal-panel",
-      `<div class="journal-page">
-        <div class="ribbon"></div>
-        <h2>${name ? `${escapeHtml(name)}'s journal` : "Your journal"}</h2>
-        <p class="hand">The pages are still blank.</p>
-        <p>This satchel is where logging will live: meals, water, weigh-ins and resting at camp, one tap from anywhere in the game, even in the middle of the intro.</p>
-        <p class="muted">Coming in Milestone 2 (the tracker).</p>
-        <div class="journal-actions">
-          ${name ? `<button class="text-btn change">Change traveler</button><button class="text-btn replay">Replay intro</button>` : ""}
-          <button class="wood-btn close">Close journal</button>
-        </div>
-      </div>`,
-    );
-    panel.addEventListener("pointerup", (e) => e.stopPropagation());
-    document.body.appendChild(panel);
-    requestAnimationFrame(() => panel.classList.add("in"));
-    const close = () => {
-      panel.classList.remove("in");
-      setTimeout(() => panel.remove(), 300);
-      opts.onClose();
-    };
-    panel.querySelector(".close")!.addEventListener("click", close);
-    panel.querySelector(".change")?.addEventListener("click", () => {
-      close();
-      opts.onChangeTraveler();
-    });
-    panel.querySelector(".replay")?.addEventListener("click", () => {
-      close();
-      opts.onReplayIntro();
-    });
-  }
+  return journal;
 }
