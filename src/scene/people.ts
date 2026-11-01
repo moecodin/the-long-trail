@@ -10,6 +10,8 @@ export interface PersonLook {
   scarf: string;
   /** "bun" is for Della. */
   hairStyle: "short" | "long" | "curly" | "bun";
+  /** Which character model plays this person once the models load (see kaykitPeople.ts). */
+  cast?: "unknown" | "ren" | "mara" | "sol" | "della";
 }
 
 export interface Person {
@@ -19,6 +21,8 @@ export interface Person {
   rightLeg: THREE.Object3D;
   rightArm: THREE.Object3D;
   leftArm: THREE.Object3D;
+  /** The look last asked for. */
+  look: PersonLook;
   setLook(look: PersonLook): void;
   /** 0 = standing, 1 = sitting down. */
   setSit(amount: number): void;
@@ -135,7 +139,9 @@ export function makePerson(look: PersonLook, height = 1): Person {
     rightLeg,
     leftArm,
     rightArm,
+    look,
     setLook(next) {
+      person.look = next;
       mats.skin.color.set(next.skin);
       mats.hair.color.set(next.hair);
       mats.cloak.color.set(next.cloak);

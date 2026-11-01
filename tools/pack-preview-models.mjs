@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const dist = process.argv[2] ?? "dist-preview";
-const MIME = { ".gltf": "model/gltf+json", ".bin": "application/octet-stream", ".png": "image/png" };
+const MIME = { ".gltf": "model/gltf+json", ".glb": "model/gltf-binary", ".bin": "application/octet-stream", ".png": "image/png" };
 const assets = {};
 const modelsDir = path.join(dist, "models");
 for (const kit of fs.readdirSync(modelsDir)) {

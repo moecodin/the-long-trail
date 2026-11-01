@@ -125,6 +125,7 @@ const lookFor = (t: Traveler) => ({
   cloak: t.cloak,
   scarf: t.scarf,
   hairStyle: t.id === "ren" ? ("short" as const) : t.id === "mara" ? ("long" as const) : ("curly" as const),
+  cast: t.id,
 });
 
 function face(p: Person, target: THREE.Vector3) {
@@ -160,10 +161,10 @@ function resetIntroScene() {
   traveler.setWalk(0, 0);
   traveler.setSit(1);
   traveler.head.rotation.set(0.25, 0, 0.45);
-  traveler.setLook({ skin: "#d2a07a", hair: "#3a2a20", cloak: "#4f5a4a", scarf: "#8a7a5a", hairStyle: "short" });
+  traveler.setLook({ skin: "#d2a07a", hair: "#3a2a20", cloak: "#4f5a4a", scarf: "#8a7a5a", hairStyle: "short", cast: "unknown" });
   world.blanket.visible = true;
   della.root.visible = false;
-  della.root.position.set(4 + 1.6, 0, 1.6);
+  della.root.position.set(spots.dellaIn.x + 2.2, 0, spots.dellaIn.z);
   world.door.rotation.y = 0;
   world.setLantern(0);
   world.setStorm(1);
@@ -315,8 +316,15 @@ async function start() {
   }
   void audio.playMusic(MUSIC_URL, MUSIC_LOOP_SECONDS, 0.7, 3);
   await kitsReady;
-  // Testing shortcut (dev server only): ?from=della jumps to Della at the door.
-  if (import.meta.env.DEV && new URLSearchParams(location.search).get("from") === "della" && save.traveler) {
+  // Testing shortcuts (dev server only): ?from=mirror opens the mirror screen,
+  // ?from=della jumps to Della at the door.
+  const from = import.meta.env.DEV ? new URLSearchParams(location.search).get("from") : null;
+  if (from === "mirror") {
+    mode = "scene";
+    jumpToMirror();
+    return meetTheMirror();
+  }
+  if (from === "della" && save.traveler) {
     mode = "scene";
     jumpToMirror();
     traveler.setLook(lookFor(travelerById(save.traveler.id)));

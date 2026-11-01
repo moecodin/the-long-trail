@@ -1,14 +1,15 @@
 // Copies the kit models the game uses out of the unzipped Quaternius kits into
 // public/models/, and shrinks their textures so they load fast on a phone.
 //
-//   node tools/prepare-kits.mjs <village glTF dir> <props glTF dir> <nature glTF dir>
+//   node tools/prepare-kits.mjs <village glTF dir> <props glTF dir> <nature glTF dir> [KayKit Adventurers dir]
 //
-// Needs ImageMagick (`convert`). The kits are CC0 (public domain).
+// Needs ImageMagick (`convert`). The kits are CC0 (public domain). The KayKit
+// characters (also CC0) stand in until Quaternius characters arrive.
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-const [villageDir, propsDir, natureDir] = process.argv.slice(2);
+const [villageDir, propsDir, natureDir, kaykitDir] = process.argv.slice(2);
 if (!natureDir) {
   console.error("usage: node tools/prepare-kits.mjs <village glTF dir> <props glTF dir> <nature glTF dir>");
   process.exit(1);
@@ -30,6 +31,8 @@ const KITS = {
       "Mug", "Book_5", "Book_Stack_1", "Stool", "FarmCrate_Apple", "Pot_1", "SmallBottles_1",
       "Bucket_Wooden_1",
     ],
+    // textures used on their own, for the armchair built in kits.ts
+    extraImages: ["T_Trim_Cloth_BaseColor.png"],
   },
   nature: {
     dir: natureDir,
@@ -44,11 +47,11 @@ const KITS = {
 
 const OUT = path.resolve("public/models");
 let bytes = 0;
-for (const [kit, { dir, models }] of Object.entries(KITS)) {
+for (const [kit, { dir, models, extraImages = [] }] of Object.entries(KITS)) {
   const out = path.join(OUT, kit);
   fs.rmSync(out, { recursive: true, force: true });
   fs.mkdirSync(out, { recursive: true });
-  const images = new Set();
+  const images = new Set(extraImages);
   for (const name of models) {
     const gltf = JSON.parse(fs.readFileSync(path.join(dir, `${name}.gltf`), "utf8"));
     for (const b of gltf.buffers ?? []) fs.copyFileSync(path.join(dir, b.uri), path.join(out, b.uri));
@@ -67,5 +70,18 @@ for (const [kit, { dir, models }] of Object.entries(KITS)) {
   }
   for (const f of fs.readdirSync(out)) bytes += fs.statSync(path.join(out, f)).size;
   console.log(`${kit}: ${models.length} models, ${images.size} textures`);
+}
+// KayKit Adventurers: three characters plus the shared animations. Their
+// textures are tiny and already inside the .glb files.
+if (kaykitDir) {
+  const out = path.join(OUT, "kaykit");
+  fs.rmSync(out, { recursive: true, force: true });
+  fs.mkdirSync(out, { recursive: true });
+  for (const f of ["Characters/gltf/Ranger.glb", "Characters/gltf/Rogue.glb", "Characters/gltf/Rogue_Hooded.glb", "Characters/gltf/Mage.glb",
+    "Animations/gltf/Rig_Medium/Rig_Medium_General.glb", "Animations/gltf/Rig_Medium/Rig_Medium_MovementBasic.glb"]) {
+    fs.copyFileSync(path.join(kaykitDir, f), path.join(out, path.basename(f)));
+    bytes += fs.statSync(path.join(out, path.basename(f))).size;
+  }
+  console.log("kaykit: 4 characters, 2 animation sets");
 }
 console.log(`total ${(bytes / 1e6).toFixed(1)} MB in ${OUT}`);
