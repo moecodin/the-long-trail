@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host",
     "build": "tsc --noEmit && vite build",
+    "build:preview": "tsc --noEmit && vite build --mode preview --outDir dist-preview",
     "preview": "vite preview --host",
     "music": "node tools/render-beepbox.mjs music/lantern-wakes-v1.txt public/audio/lantern-wakes-v1"
   },

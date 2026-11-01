@@ -12,6 +12,7 @@ where you pick and name your traveler.
 - **On your phone:** once this is merged into `main`, GitHub Pages publishes it
   at `https://moecodin.github.io/the-long-trail/` (turn Pages on once under
   Settings → Pages → Source: **GitHub Actions**).
+- **Preview link:** `npm run build:preview` makes a version with the music built into the page, for hosts that only serve web files (like the Claude preview link).
 - Add `?speed=3` to the address to play the intro three times faster while testing.
 
 ## Run it yourself

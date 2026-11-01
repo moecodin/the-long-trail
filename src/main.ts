@@ -16,7 +16,12 @@ import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
 import { creationScreen, endCard, say, skipButton, storybook, titleScreen } from "./ui/screens";
 
-const MUSIC_URL = `${import.meta.env.BASE_URL}audio/lantern-wakes-v1.m4a`;
+// The Claude preview link can only serve web files, so that build ("npm run
+// build:preview") tucks the music inside the page instead of loading it.
+const MUSIC_URL =
+  import.meta.env.MODE === "preview"
+    ? (await import("../public/audio/lantern-wakes-v1.m4a?inline")).default
+    : `${import.meta.env.BASE_URL}audio/lantern-wakes-v1.m4a`;
 /** MoeCodin's Lantern Wakes loop: 10 bars of 8 beats at 90 BPM = 53.333 s. */
 const MUSIC_LOOP_SECONDS = (10 * 8 * 60) / 90;
 

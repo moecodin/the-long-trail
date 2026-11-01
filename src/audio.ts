@@ -44,8 +44,7 @@ export class AudioManager {
 
   /** Start fetching and decoding the music early so it's ready by the first tap. */
   preloadMusic(url: string): void {
-    this.musicBuffer ??= fetch(url)
-      .then((r) => r.arrayBuffer())
+    this.musicBuffer ??= loadBytes(url)
       .then((data) => new Promise<AudioBuffer>((ok, fail) => this.ctx.decodeAudioData(data, ok, fail)))
       .catch((err) => {
         console.warn("Music could not load", err);
@@ -152,4 +151,15 @@ export class AudioManager {
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
     return buffer;
   }
+}
+
+/** Fetch a file, or unpack it directly when it's built into the page as a data: URL. */
+async function loadBytes(url: string): Promise<ArrayBuffer> {
+  if (url.startsWith("data:")) {
+    const bin = atob(url.slice(url.indexOf(",") + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  }
+  return (await fetch(url)).arrayBuffer();
 }
