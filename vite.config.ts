@@ -5,5 +5,5 @@ import { defineConfig } from "vite";
 export default defineConfig({
   base: "./",
   // Three.js is big; that is expected and fine for a game.
-  build: { chunkSizeWarningLimit: 900 },
+  build: { chunkSizeWarningLimit: 1200 },
 });

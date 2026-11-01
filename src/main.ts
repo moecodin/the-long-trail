@@ -10,7 +10,7 @@ import * as THREE from "three";
 import { AudioManager } from "./audio";
 import { loadSave, writeSave } from "./save";
 import { travelerById, type Traveler } from "./travelers";
-import { createWorld } from "./scene/world";
+import { createWorld, WIN_X } from "./scene/world";
 import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
@@ -74,6 +74,9 @@ const world = createWorld(canvas);
 const { camera, spots, traveler, della } = world;
 const look = spots.titleLook.clone();
 window.addEventListener("resize", () => world.resize());
+// The kit models download in the background while the title is showing.
+// If they fail to load, the simple placeholder shapes stay in place.
+const kitsReady = world.dressWithKits().catch((err) => console.warn("Kit models did not load:", err));
 audio.preloadMusic(MUSIC_URL);
 
 /** ?speed=4 plays the intro faster, handy for testing. */
@@ -218,7 +221,7 @@ async function lanternWakes() {
     // The light: the Summit lantern flickers on, far across the valley
     await director.wait(0.8);
     audio.setMusicVolume(0.85, 6);
-    void director.moveCamera(camera, look, new THREE.Vector3(-0.3, 1.35, 0.6), spots.windowLook, 7);
+    void director.moveCamera(camera, look, new THREE.Vector3(WIN_X - 0.3, 1.35, 0.6), spots.windowLook, 7);
     await director.tween(6, (t) => world.setLantern(t), (t) => t);
     await director.wait(1);
 
@@ -311,6 +314,14 @@ async function start() {
     // iPhone Safari can't lock orientation; the "turn your phone" notice covers it.
   }
   void audio.playMusic(MUSIC_URL, MUSIC_LOOP_SECONDS, 0.7, 3);
+  await kitsReady;
+  // Testing shortcut (dev server only): ?from=della jumps to Della at the door.
+  if (import.meta.env.DEV && new URLSearchParams(location.search).get("from") === "della" && save.traveler) {
+    mode = "scene";
+    jumpToMirror();
+    traveler.setLook(lookFor(travelerById(save.traveler.id)));
+    return dellaInTheDoorway(save.traveler.name);
+  }
   if (returning && choice === "begin") {
     mode = "scene";
     jumpToMirror();
