@@ -50,16 +50,12 @@ interface DressContext {
 
 export const BASE = `${import.meta.env.BASE_URL}models/`;
 
-// The phone preview link can only hold a few kinds of files, so its build packs
-// every model into one script (tools/pack-preview-models.mjs) that fills
-// window.__KIT_ASSETS. When that is there, model requests are answered from it.
-const packed = (window as unknown as { __KIT_ASSETS?: Record<string, string> }).__KIT_ASSETS;
+// The Claude preview link only serves some kinds of files, so its build
+// (tools/pack-preview-models.mjs) renames the model files: X.gltf becomes
+// X.gltf.json, and X.bin / X.glb get ".wasm" added. Ask for those names there.
 export const manager = new THREE.LoadingManager();
-if (packed) {
-  manager.setURLModifier((url) => {
-    const m = url.match(/(village|props|nature|kaykit|camp)\/[^/?#]+$/);
-    return (m && packed[m[0]]) || url;
-  });
+if (import.meta.env.MODE === "preview") {
+  manager.setURLModifier((url) => url.replace(/\.gltf(?=$|[?#])/, ".gltf.json").replace(/\.(bin|glb)(?=$|[?#])/, ".$1.wasm"));
 }
 export const loader = new GLTFLoader(manager);
 const cache = new Map<string, Promise<THREE.Object3D>>();
