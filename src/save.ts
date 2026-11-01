@@ -1,0 +1,35 @@
+// Everything the game remembers between visits. For now that's just your
+// traveler. It lives in the browser's local storage on this device.
+
+export type TravelerId = "ren" | "mara" | "sol";
+
+export interface Save {
+  version: 1;
+  traveler: { id: TravelerId; name: string } | null;
+  introSeen: boolean;
+  /** 1 to 4: how clear the mirror portrait is (one step per act). */
+  portraitStage: 1 | 2 | 3 | 4;
+  muted: boolean;
+}
+
+const KEY = "longtrail.save.v1";
+
+const fresh = (): Save => ({ version: 1, traveler: null, introSeen: false, portraitStage: 1, muted: false });
+
+export function loadSave(): Save {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return fresh();
+    return { ...fresh(), ...JSON.parse(raw) };
+  } catch {
+    return fresh();
+  }
+}
+
+export function writeSave(save: Save): void {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(save));
+  } catch {
+    // Private browsing can block storage. The game still plays; it just won't remember.
+  }
+}
