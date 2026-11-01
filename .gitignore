@@ -4,3 +4,7 @@ dist/
 .DS_Store
 dist-preview/
 dist-styletest/
+
+# models we may use but not share (Fab license): never commit
+public/models/private/
+.env.local
