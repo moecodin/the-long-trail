@@ -5,6 +5,8 @@ import * as THREE from "three";
 import type { PersonLook } from "../scene/people";
 import { createCamp, type Spot } from "./camp";
 import { Controls } from "./controls";
+import { loadFox, type Fox } from "./fox";
+import { loader } from "../scene/kits";
 import { el } from "../ui/dom";
 
 /** Top speed with the stick pushed all the way (m/s). A gentle jog. */
@@ -82,6 +84,16 @@ export function startCamp(opts: CampOptions): CampSession {
   const camp = createCamp(opts.renderer, opts.look);
   const { traveler, camera } = camp;
   const pos = traveler.root.position;
+
+  // The fox companion. It comes from outside the repo (see fox.ts), so camp
+  // works fine without it if it can't be fetched.
+  let fox: Fox | null = null;
+  loadFox(loader, camp)
+    .then((f) => {
+      f.placeAt(pos.x - 0.8, pos.z + 0.6, traveler.root.rotation.y);
+      fox = f;
+    })
+    .catch((err) => console.warn("The fox did not load; camp goes on without it.", err));
 
   let paused = false;
   let moved = false;
@@ -399,6 +411,7 @@ export function startCamp(opts: CampOptions): CampSession {
       focus.lerp(new THREE.Vector3().copy(pos).setY(0), 1 - Math.exp(-dt * 4));
       placeCamera();
 
+      fox?.update(paused ? 0 : dt, pos.x, pos.z, traveler.root.rotation.y, seated);
       camp.update(dt, time);
     },
     render() {

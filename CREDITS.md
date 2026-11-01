@@ -6,6 +6,7 @@
 - **KayKit** Adventurers 2.0 by Kay Lousberg (CC0, public domain). https://kaylousberg.com
 - **Campfire:** This work is based on "LowPoly bonfire" (https://sketchfab.com/3d-models/lowpoly-bonfire-6c0ca6f74536435ab7d54eb17a1155bb) by LEX_GFX (https://sketchfab.com/boltex360), licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Textures were resized for phones. File: `public/models/camp/Bonfire.gltf`.
 - **Satchel:** "Adventure Satchel" (https://skfb.ly/6ZUGQ) by Reidicus, licensed under CC BY 4.0 (http://creativecommons.org/licenses/by/4.0/). Textures were resized for phones and the knife on its side is left off. File: `public/models/camp/Satchel.gltf`.
+- **Fox companion:** "7-Rigged LOW POLY STYLE FOX CHARACTER" by ArtifySpace, from Fab. Used under its Fab license, so the model file is not in this public repo: the game downloads it from the project's own storage. Converted to GLB (without its punch and death animations) by `tools/prepare-fox.mjs`.
 - **Intro story pages** (`public/pages/`) are paintings rendered from the Quaternius and KayKit models above by `tools/render-page-art.mjs`.
 
 ## Music

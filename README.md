@@ -53,6 +53,8 @@ Resend) before other people play.
   for the button.
 - Add `?from=camp` to the address to skip straight to camp.
 - The satchel has **Change traveler** if you want to pick someone else.
+- **The fox** follows you around: it walks or scampers to catch up, and waits
+  beside you (glancing up now and then) when you stop.
 
 ## Play it
 
@@ -126,3 +128,18 @@ plus a CC BY campfire, see [CREDITS.md](CREDITS.md). Anything with a CC BY
 license must be listed there. `tools/prepare-kits.mjs` copies the kit models
 the game uses into `public/models/` and shrinks their textures. Hand-picked
 extras like the campfire live in `public/models/camp/`.
+
+### Models we can't share (the fox)
+
+Some models (like the fox from Fab) can be used in the game but must not be
+shared as files, so they never go in this public repo. `public/models/private/`
+is ignored by git. To set up the fox:
+
+1. `node tools/prepare-fox.mjs ~/Downloads/fox.fbx` makes
+   `public/models/private/fox.glb`.
+2. For the live game, upload that file to the Supabase project's public
+   storage bucket `game-art` (the address is `FOX_URL` in `src/camp/fox.ts`).
+3. To test with your local copy instead, put
+   `VITE_FOX_URL=./models/private/fox.glb` in a `.env.local` file.
+
+If the fox can't be loaded, camp works fine without it.
