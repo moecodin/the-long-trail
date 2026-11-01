@@ -1,10 +1,14 @@
 // Touch (and keyboard) controls for walking around.
 //
-//   Drag anywhere   a thumb joystick appears where your finger lands; push it
-//                   a little to stroll, further to jog.
-//   Quick tap       walk to that spot (or to the thing you tapped).
-//   Keyboard        WASD or arrow keys to walk, E / Space / Enter for the
-//                   action button. Handy when testing on a computer.
+//   Drag on the left    a thumb joystick appears where your finger lands; push
+//                       it a little to stroll, further to jog.
+//   Drag on the right   turn the camera around the traveler (look around).
+//                       Both thumbs work at the same time ("twin-stick").
+//   Quick tap           walk to that spot (or to the thing you tapped).
+//   Mouse               same as touch: drag on the left half to walk, on the
+//                       right half (or with the right button anywhere) to look.
+//   Keyboard            WASD or arrow keys to walk, Q / R to turn the camera,
+//                       E / Space / Enter for the action button.
 
 import { el } from "../ui/dom";
 
@@ -21,15 +25,34 @@ export interface ControlEvents {
   onAction(): void;
 }
 
+/** Where on the screen a finger counts as a joystick finger instead of a camera finger. */
+const STICK_SIDE = 0.5;
+/** How fast Q / R turn the camera, in radians per second. */
+const KEY_TURN = 1.8;
+
+type Role = "stick" | "look";
+interface Finger {
+  id: number;
+  role: Role;
+  x: number;
+  y: number;
+  lastX: number;
+  lastY: number;
+  t: number;
+  dragging: boolean;
+}
+
 export class Controls {
   /** Where the stick (or keys) point, as screen right (x) and screen down (y), each -1 to 1. */
   readonly move = { x: 0, y: 0 };
+  /** How far the camera fingers have dragged since the last takeLook(), in pixels. */
+  private look = { x: 0, y: 0 };
   enabled = true;
 
   private base = el("div", "stick-base");
   private knob = el("div", "stick-knob");
   private actionBtn = el("button", "action-btn");
-  private pointer: { id: number; x: number; y: number; t: number; dragging: boolean } | null = null;
+  private fingers = new Map<number, Finger>();
   private stick = { x: 0, y: 0 };
   private keys = new Set<string>();
   private cleanup: (() => void)[] = [];
@@ -51,6 +74,8 @@ export class Controls {
       this.cleanup.push(() => target.removeEventListener(type, fn as EventListener));
     };
     surface.classList.add("walk-surface");
+    // the right mouse button turns the camera, so keep the menu out of the way
+    on(surface, "contextmenu", (e) => e.preventDefault());
     on(surface, "pointerdown", (e) => this.down(e));
     on(window, "pointermove", (e) => this.moveTo(e));
     on(window, "pointerup", (e) => this.up(e));
@@ -82,6 +107,21 @@ export class Controls {
     this.actionBtn.classList.toggle("in", !!label && this.enabled);
   }
 
+  /**
+   * How far to turn the camera since last asked: x is a left-right drag and y an
+   * up-down drag, in pixels. Q / R count as a steady drag. Call once a frame.
+   */
+  takeLook(dt: number): { x: number; y: number } {
+    const out = { x: this.look.x, y: this.look.y };
+    this.look.x = this.look.y = 0;
+    if (this.enabled) {
+      const turn = (this.keys.has("r") ? 1 : 0) - (this.keys.has("q") ? 1 : 0);
+      // in "pixels", to match a finger: about 230 px of drag per radian
+      out.x += turn * KEY_TURN * dt * 230;
+    }
+    return out;
+  }
+
   /** True while a finger or key is steering. */
   get steering() {
     return this.move.x !== 0 || this.move.y !== 0;
@@ -89,7 +129,8 @@ export class Controls {
 
   /** Let go of everything (e.g. when the journal opens). */
   release() {
-    this.pointer = null;
+    this.fingers.clear();
+    this.look.x = this.look.y = 0;
     this.stick.x = this.stick.y = 0;
     this.base.classList.remove("in");
     this.update();
@@ -103,23 +144,40 @@ export class Controls {
   }
 
   private down(e: PointerEvent) {
-    if (!this.enabled || this.pointer) return;
+    if (!this.enabled) return;
     e.preventDefault();
-    this.pointer = { id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), dragging: false };
+    const left = e.clientX < window.innerWidth * STICK_SIDE;
+    const role: Role = e.pointerType === "mouse" && e.button !== 0 ? "look" : left ? "stick" : "look";
+    // one finger per job: a second finger on the same side is ignored
+    for (const f of this.fingers.values()) if (f.role === role) return;
+    const { clientX: x, clientY: y } = e;
+    this.fingers.set(e.pointerId, { id: e.pointerId, role, x, y, lastX: x, lastY: y, t: performance.now(), dragging: false });
   }
 
   private moveTo(e: PointerEvent) {
-    const p = this.pointer;
-    if (!p || e.pointerId !== p.id) return;
-    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    const f = this.fingers.get(e.pointerId);
+    if (!f) return;
+    const dx = e.clientX - f.x, dy = e.clientY - f.y;
     const dist = Math.hypot(dx, dy);
-    if (!p.dragging && dist > TAP_SLOP) {
-      p.dragging = true;
-      this.base.style.left = `${p.x}px`;
-      this.base.style.top = `${p.y}px`;
-      this.base.classList.add("in");
+    if (!f.dragging && dist > TAP_SLOP) {
+      f.dragging = true;
+      // start turning from here, so the camera doesn't jump by the slop
+      f.lastX = e.clientX;
+      f.lastY = e.clientY;
+      if (f.role === "stick") {
+        this.base.style.left = `${f.x}px`;
+        this.base.style.top = `${f.y}px`;
+        this.base.classList.add("in");
+      }
     }
-    if (!p.dragging) return;
+    if (!f.dragging) return;
+    if (f.role === "look") {
+      this.look.x += e.clientX - f.lastX;
+      this.look.y += e.clientY - f.lastY;
+      f.lastX = e.clientX;
+      f.lastY = e.clientY;
+      return;
+    }
     const k = Math.min(dist, STICK_RADIUS) / (dist || 1);
     this.knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
     this.stick.x = (dx * k) / STICK_RADIUS;
@@ -128,11 +186,18 @@ export class Controls {
   }
 
   private up(e: PointerEvent, cancelled = false) {
-    const p = this.pointer;
-    if (!p || e.pointerId !== p.id) return;
-    const wasTap = !p.dragging && performance.now() - p.t < TAP_TIME;
-    this.release();
-    if (wasTap && !cancelled && this.enabled) this.events.onTap(p.x, p.y);
+    const f = this.fingers.get(e.pointerId);
+    if (!f) return;
+    this.fingers.delete(e.pointerId);
+    const wasTap = !f.dragging && performance.now() - f.t < TAP_TIME;
+    if (f.role === "stick") {
+      this.stick.x = this.stick.y = 0;
+      this.knob.style.transform = "";
+      this.base.classList.remove("in");
+      this.update();
+    }
+    const leftClick = e.pointerType !== "mouse" || e.button === 0;
+    if (wasTap && leftClick && !cancelled && this.enabled) this.events.onTap(f.x, f.y);
   }
 
   private update() {

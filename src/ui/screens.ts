@@ -205,7 +205,7 @@ export function campHint(firstTime: boolean): () => void {
   const node = el(
     "div",
     "camp-hint",
-    `<span><b>Drag</b> anywhere to walk</span><span><b>Tap</b> a spot to walk there</span>`,
+    `<span><b>Drag left</b> to walk</span><span><b>Drag right</b> to look around</span><span><b>Tap</b> a spot to walk there</span>`,
   );
   document.body.appendChild(node);
   requestAnimationFrame(() => requestAnimationFrame(() => node.classList.add("in")));
