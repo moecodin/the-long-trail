@@ -122,6 +122,54 @@ export class AudioManager {
     src.stop(t + 4.6);
   }
 
+  /**
+   * A campfire: a soft low roar plus little random pops and crackles.
+   * Calling it again changes the volume (0 puts the fire out).
+   */
+  setFire(volume: number, seconds = 1.5): void {
+    if (!this.fire) {
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noise;
+      src.loop = true;
+      src.playbackRate.value = 0.6;
+      const lowpass = this.ctx.createBiquadFilter();
+      lowpass.type = "lowpass";
+      lowpass.frequency.value = 500;
+      const roar = this.ctx.createGain();
+      roar.gain.value = 0.35;
+      const gain = this.ctx.createGain();
+      gain.gain.value = 0;
+      src.connect(lowpass).connect(roar).connect(gain).connect(this.sfxGain);
+      src.start();
+      const pop = () => {
+        if (gain.gain.value > 0.01 && this.ctx.state === "running") this.crackle(gain);
+        timer = window.setTimeout(pop, 60 + Math.random() * (Math.random() < 0.3 ? 90 : 600));
+      };
+      let timer = window.setTimeout(pop, 200);
+      this.fire = { gain, stop: () => clearTimeout(timer) };
+    }
+    this.fade(this.fire.gain.gain, volume, seconds);
+  }
+
+  private fire: { gain: GainNode; stop(): void } | null = null;
+
+  private crackle(out: GainNode): void {
+    const t = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise;
+    const band = this.ctx.createBiquadFilter();
+    band.type = "bandpass";
+    band.frequency.value = 1500 + Math.random() * 3500;
+    band.Q.value = 1.5;
+    const g = this.ctx.createGain();
+    const loud = 0.25 + Math.random() * 0.75;
+    g.gain.setValueAtTime(loud, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02 + Math.random() * 0.05);
+    src.connect(band).connect(g).connect(out);
+    src.start(t, Math.random() * 3);
+    src.stop(t + 0.1);
+  }
+
   /** A tiny wooden click for buttons. */
   tick(): void {
     const t = this.ctx.currentTime;

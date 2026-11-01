@@ -1,8 +1,9 @@
 // The Long Trail: entry point.
 //
-// The flow for this milestone:
+// The flow:
 //   title screen -> "The Lantern Wakes" intro -> the mirror (pick and name
-//   your traveler) -> Della in the doorway -> end card.
+//   your traveler) -> Della in the doorway -> camp at dusk (Milestone 1).
+// Coming back later, "Tap to begin" goes straight to camp.
 // The satchel journal button is mounted first, so it's there on every screen.
 
 import "./style.css";
@@ -14,7 +15,8 @@ import { createWorld, WIN_X } from "./scene/world";
 import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
-import { creationScreen, endCard, say, skipButton, storybook, titleScreen } from "./ui/screens";
+import { campHint, chapterCard, creationScreen, say, skipButton, storybook, titleScreen } from "./ui/screens";
+import { startCamp, type CampSession } from "./camp/play";
 
 // The Claude preview link can only serve web files, so that build ("npm run
 // build:preview") tucks the music inside the page instead of loading it.
@@ -26,6 +28,7 @@ const MUSIC_URL =
 const MUSIC_LOOP_SECONDS = (10 * 8 * 60) / 90;
 
 const REPLAY_KEY = "longtrail.replay";
+const CHANGE_KEY = "longtrail.change-traveler";
 const save = loadSave();
 const audio = new AudioManager(save.muted);
 const director = new Director();
@@ -33,8 +36,13 @@ const director = new Director();
 // The story pauses while the journal is open or while the phone is held upright
 // (the game is landscape only).
 let journalOpen = false;
+/** The camp, once you've arrived there. */
+let camp: CampSession | null = null;
 const portrait = window.matchMedia("(orientation: portrait)");
-const updatePause = () => (director.paused = journalOpen || portrait.matches);
+const updatePause = () => {
+  director.paused = journalOpen || portrait.matches;
+  camp?.setPaused(director.paused);
+};
 portrait.addEventListener("change", updatePause);
 updatePause();
 
@@ -66,6 +74,10 @@ mountSatchel({
     sessionStorage.setItem(REPLAY_KEY, "1");
     location.reload();
   },
+  onChangeTraveler: () => {
+    sessionStorage.setItem(CHANGE_KEY, "1");
+    location.reload();
+  },
 });
 
 // 2. The 3D world.
@@ -73,7 +85,10 @@ const canvas = document.getElementById("world") as HTMLCanvasElement;
 const world = createWorld(canvas);
 const { camera, spots, traveler, della } = world;
 const look = spots.titleLook.clone();
-window.addEventListener("resize", () => world.resize());
+window.addEventListener("resize", () => {
+  world.resize();
+  camp?.resize();
+});
 // The kit models download in the background while the title is showing.
 // If they fail to load, the simple placeholder shapes stay in place.
 const kitsReady = world.dressWithKits().catch((err) => console.warn("Kit models did not load:", err));
@@ -82,7 +97,8 @@ audio.preloadMusic(MUSIC_URL);
 /** ?speed=4 plays the intro faster, handy for testing. */
 const SPEED = Number(new URLSearchParams(location.search).get("speed")) || 1;
 
-let mode: "title" | "scene" = "title";
+let mode: "title" | "scene" | "camp" = "title";
+let fireSoundTimer = 0;
 let last = performance.now();
 const clock = { real: 0 };
 function frame(now: number) {
@@ -96,7 +112,18 @@ function frame(now: number) {
     camera.position.set(spots.title.x + Math.sin(t) * 10, spots.title.y + Math.sin(t * 0.7) * 2, spots.title.z + Math.cos(t) * 4);
     camera.lookAt(look);
   }
-  world.render(dt, clock.real);
+  if (mode === "camp" && camp) {
+    camp.update(dt, clock.real);
+    camp.render();
+    // the fire sounds louder the closer you are to it
+    fireSoundTimer -= dt;
+    if (fireSoundTimer <= 0) {
+      fireSoundTimer = 0.25;
+      audio.setFire(Math.max(0.08, 0.75 - camp.distanceToFire() * 0.07), 0.3);
+    }
+  } else {
+    world.render(dt, clock.real);
+  }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -258,6 +285,8 @@ async function meetTheMirror() {
   writeSave(save);
   const t = travelerById(result.id);
   traveler.setLook(lookFor(t));
+  // Changing your traveler later goes straight back to camp.
+  if (save.introSeen) return goToCamp(false);
   await dellaInTheDoorway(result.name);
 }
 
@@ -282,18 +311,34 @@ async function dellaInTheDoorway(name: string) {
 
   save.introSeen = true;
   writeSave(save);
-  await finish();
+  fadeBlack(true);
+  await director.wait(1.4);
+  await chapterCard("Dusk", "At the edge of Lowmeadow, where the trail begins, you make camp.");
+  await goToCamp(true);
 }
 
-async function finish() {
+// ---------- camp ----------
+
+async function goToCamp(firstTime: boolean) {
+  fadeBlack(true);
+  let hint: (() => void) | null = null;
   const t = travelerById(save.traveler!.id);
-  const choice = await endCard(save.traveler!.name, t);
-  if (choice === "replay") return lanternWakes();
-  jumpToMirror();
-  traveler.setLook(lookFor(t));
-  della.root.visible = false;
-  world.setItemsGlow(0);
-  await meetTheMirror();
+  camp = startCamp({
+    renderer: world.renderer,
+    canvas,
+    look: lookFor(t),
+    onFirstMove: () => hint?.(),
+    tick: () => audio.tick(),
+  });
+  await camp.ready;
+  updatePause();
+  mode = "camp";
+  audio.setRain(0, 2);
+  audio.setMusicVolume(0.4, 3);
+  // a beat for the first frame to draw before the fade lifts
+  await new Promise((r) => setTimeout(r, 300));
+  fadeBlack(false);
+  hint = campHint(firstTime);
 }
 
 // ---------- start ----------
@@ -304,6 +349,8 @@ async function start() {
   placeCamera(spots.title, spots.titleLook);
   const replay = sessionStorage.getItem(REPLAY_KEY) === "1";
   sessionStorage.removeItem(REPLAY_KEY);
+  const changeTraveler = sessionStorage.getItem(CHANGE_KEY) === "1" && save.introSeen && !!save.traveler;
+  sessionStorage.removeItem(CHANGE_KEY);
   const returning = save.introSeen && save.traveler && !replay ? save.traveler.name : null;
   const choice = await titleScreen(returning);
   // This tap is what lets iPhone play sound.
@@ -316,9 +363,25 @@ async function start() {
   }
   void audio.playMusic(MUSIC_URL, MUSIC_LOOP_SECONDS, 0.7, 3);
   await kitsReady;
-  // Testing shortcuts (dev server only): ?from=mirror opens the mirror screen,
-  // ?from=della jumps to Della at the door.
-  const from = import.meta.env.DEV ? new URLSearchParams(location.search).get("from") : null;
+  // Testing shortcuts: ?from=camp goes straight to camp (picking a traveler
+  // first if there isn't one yet). Dev server only: ?from=mirror opens the
+  // mirror screen, ?from=della jumps to Della at the door.
+  const params = new URLSearchParams(location.search);
+  const from = import.meta.env.DEV || params.get("from") === "camp" ? params.get("from") : null;
+  if (changeTraveler) {
+    mode = "scene";
+    jumpToMirror();
+    return meetTheMirror();
+  }
+  if (from === "camp") {
+    if (!save.traveler) {
+      mode = "scene";
+      save.introSeen = true;
+      jumpToMirror();
+      return meetTheMirror();
+    }
+    return goToCamp(false);
+  }
   if (from === "mirror") {
     mode = "scene";
     jumpToMirror();
@@ -331,11 +394,7 @@ async function start() {
     return dellaInTheDoorway(save.traveler.name);
   }
   if (returning && choice === "begin") {
-    mode = "scene";
-    jumpToMirror();
-    traveler.setLook(lookFor(travelerById(save.traveler!.id)));
-    placeCamera(spots.doorCam, spots.doorLook);
-    await finish();
+    await goToCamp(false);
   } else {
     await lanternWakes();
   }

@@ -21,6 +21,8 @@ export interface SatchelOptions {
   onToggleSound(): boolean;
   muted: boolean;
   onReplayIntro(): void;
+  /** Go back to the mirror to pick a different traveler or name. */
+  onChangeTraveler(): void;
   travelerName(): string | null;
 }
 
@@ -57,7 +59,7 @@ export function mountSatchel(opts: SatchelOptions): void {
         <p>This satchel is where logging will live: meals, water, weigh-ins and resting at camp, one tap from anywhere in the game, even in the middle of the intro.</p>
         <p class="muted">Coming in Milestone 2 (the tracker).</p>
         <div class="journal-actions">
-          ${name ? `<button class="text-btn replay">Replay intro</button>` : ""}
+          ${name ? `<button class="text-btn change">Change traveler</button><button class="text-btn replay">Replay intro</button>` : ""}
           <button class="wood-btn close">Close journal</button>
         </div>
       </div>`,
@@ -71,6 +73,10 @@ export function mountSatchel(opts: SatchelOptions): void {
       opts.onClose();
     };
     panel.querySelector(".close")!.addEventListener("click", close);
+    panel.querySelector(".change")?.addEventListener("click", () => {
+      close();
+      opts.onChangeTraveler();
+    });
     panel.querySelector(".replay")?.addEventListener("click", () => {
       close();
       opts.onReplayIntro();

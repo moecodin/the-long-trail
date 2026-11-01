@@ -196,35 +196,43 @@ export async function say(speaker: string, line: string): Promise<void> {
 
 // ---------- end card ----------
 
-export function endCard(name: string, traveler: Traveler): Promise<"replay" | "change"> {
-  const node = el(
-    "div",
-    "overlay end-card",
-    `<div class="end-inner">
-      <div class="end-portrait"><div class="stage-1">${portraitSVG(traveler)}</div></div>
-      <div class="end-text">
-        <p class="kicker">The Lantern Wakes</p>
-        <h2>${escapeHtml(name)}'s trail begins at dusk.</h2>
-        <p>That's the end of the intro for now. Walking around camp comes next, in Milestone 1.</p>
-        <div class="end-actions">
-          <button class="text-btn change">Change traveler</button>
-          <button class="wood-btn replay">Replay intro</button>
-        </div>
-      </div>
-    </div>`,
-  );
-  node.addEventListener("pointerup", (e) => e.stopPropagation());
+/** A short title card between scenes, like a page in a storybook. Tap or wait to go on. */
+export function chapterCard(kicker: string, line: string): Promise<void> {
+  const node = el("div", "overlay chapter-card", `<p class="kicker">${escapeHtml(kicker)}</p><p class="chapter-line">${escapeHtml(line)}</p>`);
   show(node);
   return new Promise((resolve) => {
-    node.querySelector(".replay")!.addEventListener("click", () => {
-      void hide(node);
-      resolve("replay");
-    });
-    node.querySelector(".change")!.addEventListener("click", () => {
-      void hide(node);
-      resolve("change");
-    });
+    let done = false;
+    const go = () => {
+      if (done) return;
+      done = true;
+      void hide(node, 900).then(resolve);
+    };
+    setTimeout(go, 4200);
+    node.addEventListener("pointerup", go);
   });
+}
+
+/**
+ * How to walk, shown when you arrive at camp. Returns a function that hides it
+ * (called the first time you move). It also fades by itself after a while.
+ */
+export function campHint(firstTime: boolean): () => void {
+  const node = el(
+    "div",
+    "camp-hint",
+    `<span><b>Drag</b> anywhere to walk</span><span><b>Tap</b> a spot to walk there</span>`,
+  );
+  document.body.appendChild(node);
+  requestAnimationFrame(() => requestAnimationFrame(() => node.classList.add("in")));
+  let gone = false;
+  const close = () => {
+    if (gone) return;
+    gone = true;
+    node.classList.remove("in");
+    setTimeout(() => node.remove(), 800);
+  };
+  setTimeout(close, firstTime ? 14000 : 7000);
+  return close;
 }
 
 export function skipButton(onSkip: () => void): HTMLElement {
