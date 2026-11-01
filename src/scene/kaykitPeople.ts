@@ -129,8 +129,16 @@ function turnBone(bone: THREE.Bone, modelAxis: THREE.Vector3, angle: number, mod
 /**
  * Give a placeholder Person a KayKit body. Returns an update function to call
  * every frame. `castFor` picks the model from the look the intro asks for.
+ * `gear` is called with each new model, to hang things on it (the satchel).
  */
-export function wearKayKit(person: Person, loaded: Loaded, castFor: (look: PersonLook) => CastKey, firstLook: PersonLook, heightScale = 1) {
+export function wearKayKit(
+  person: Person,
+  loaded: Loaded,
+  castFor: (look: PersonLook) => CastKey,
+  firstLook: PersonLook,
+  heightScale = 1,
+  gear?: (model: THREE.Object3D) => void,
+) {
   const body = person.root.children[0];
   body.visible = false;
   const holder = new THREE.Group();
@@ -166,6 +174,7 @@ export function wearKayKit(person: Person, loaded: Loaded, castFor: (look: Perso
       }
     });
     holder.add(model);
+    gear?.(model);
     mixer = new THREE.AnimationMixer(model);
     const clip = (n: string) => loaded.clips.find((c) => c.name === n)!;
     idle = mixer.clipAction(clip("Idle_A"));
