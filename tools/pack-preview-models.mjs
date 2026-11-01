@@ -1,5 +1,6 @@
-// For the phone preview link only: packs dist-preview/models/** into one script,
-// assets/kit-assets.js, as data URLs, and loads it from index.html. The preview
+// For the phone preview link only: packs dist-preview/models/** into scripts
+// (assets/kit-assets-1.js, -2.js, ...) as data URLs, and loads them from
+// index.html. Each script stays under the preview host's 16 MB limit. The preview
 // host can't serve .gltf/.bin files, but it can serve JavaScript.
 //
 //   node tools/pack-preview-models.mjs dist-preview
@@ -16,13 +17,29 @@ for (const kit of fs.readdirSync(modelsDir)) {
     assets[`${kit}/${f}`] = `data:${MIME[path.extname(f)]};base64,${data}`;
   }
 }
-fs.writeFileSync(path.join(dist, "assets", "kit-assets.js"), `window.__KIT_ASSETS=${JSON.stringify(assets)};\n`);
+const LIMIT = 12e6;
+const chunks = [{}];
+let size = 0;
+for (const [k, v] of Object.entries(assets)) {
+  if (size + v.length > LIMIT && Object.keys(chunks.at(-1)).length) {
+    chunks.push({});
+    size = 0;
+  }
+  chunks.at(-1)[k] = v;
+  size += v.length;
+}
+const names = chunks.map((c, i) => {
+  const name = `kit-assets-${i + 1}.js`;
+  fs.writeFileSync(path.join(dist, "assets", name), `window.__KIT_ASSETS=Object.assign(window.__KIT_ASSETS||{},${JSON.stringify(c)});\n`);
+  return name;
+});
 fs.rmSync(modelsDir, { recursive: true });
 // the preview build already has the music inside its script
 fs.rmSync(path.join(dist, "audio"), { recursive: true, force: true });
 const indexPath = path.join(dist, "index.html");
 const html = fs.readFileSync(indexPath, "utf8");
-if (!html.includes("kit-assets.js")) {
-  fs.writeFileSync(indexPath, html.replace("<head>", '<head>\n    <script src="./assets/kit-assets.js"></script>'));
+if (!html.includes("kit-assets")) {
+  const tags = names.map((n) => `\n    <script src="./assets/${n}"></script>`).join("");
+  fs.writeFileSync(indexPath, html.replace("<head>", `<head>${tags}`));
 }
-console.log(`packed ${Object.keys(assets).length} model files`);
+console.log(`packed ${Object.keys(assets).length} model files into ${names.length} scripts`);
