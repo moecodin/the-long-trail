@@ -179,3 +179,15 @@
   .j-tabs button { font-size: 0.8rem; padding: 2px 4px; }
 }
 .j-page:first-of-type .j-head { padding-right: 24px; }
+
+/* ---------- gathered ---------- */
+.j-gathered { list-style: none; margin: 0; padding: 0; }
+.j-gathered li { display: flex; border-bottom: 1px dashed var(--j-faint); }
+.j-gathered .j-item[aria-pressed="true"] { background: #5c7a3e1f; border-radius: 6px; }
+.j-gi { display: flex; align-items: center; gap: 8px; }
+.j-gdoodle { width: 26px; height: 26px; flex: none; color: var(--j-leaf); }
+.j-unfound { color: #3b2a1e77; font-style: italic; }
+.j-unfound .j-gdoodle { color: #3b2a1e44; }
+.j-gshow { display: flex; gap: 14px; align-items: center; }
+.j-gbig { width: 84px; height: 84px; flex: none; color: var(--j-leaf); padding: 8px; border: 2px dashed #5c7a3e66; border-radius: 50%; }
+@media (max-height: 430px) { .j-gbig { width: 64px; height: 64px; } .j-gathered .j-item { padding: 5px 2px; } }

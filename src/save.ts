@@ -1,5 +1,8 @@
-// Everything the game remembers between visits. For now that's just your
-// traveler. It lives in the browser's local storage on this device.
+// Everything the game remembers between visits: your traveler, what you've
+// gathered and how far along the trail you are. It lives in the browser's
+// local storage on this device (and in your online backup once you sign in).
+
+import { freshGather, type GatherSave } from "./trail/gather";
 
 export type TravelerId = "ren" | "mara" | "sol";
 
@@ -10,19 +13,36 @@ export interface Save {
   /** 1 to 4: how clear the mirror portrait is (one step per act). */
   portraitStage: 1 | 2 | 3 | 4;
   muted: boolean;
+  /** What you've picked on the trail, and which spots are picked for today. */
+  gather: GatherSave;
+  /** Legs of the trail you've walked to the end of (and made camp). */
+  legsDone: number[];
+  /** Legs you've set out on at least once (so the chapter card shows only the first time). */
+  legsSeen: number[];
   /** When this last changed (ms), for syncing. */
   updated?: number;
 }
 
 const KEY = "longtrail.save.v1";
 
-const fresh = (): Save => ({ version: 1, traveler: null, introSeen: false, portraitStage: 1, muted: false });
+const fresh = (): Save => ({
+  version: 1,
+  traveler: null,
+  introSeen: false,
+  portraitStage: 1,
+  muted: false,
+  gather: freshGather(),
+  legsDone: [],
+  legsSeen: [],
+});
 
 export function loadSave(): Save {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return fresh();
-    return { ...fresh(), ...JSON.parse(raw) };
+    const s = { ...fresh(), ...JSON.parse(raw) } as Save;
+    s.gather = { ...freshGather(), ...s.gather };
+    return s;
   } catch {
     return fresh();
   }

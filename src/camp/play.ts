@@ -1,9 +1,10 @@
-// Playing at camp: moving the traveler, the follow camera, the action button
-// and the little notes you get when you look at things.
+// Walking around an area (camp, or a leg of the trail): moving the traveler,
+// the follow camera, the action button, picking things up, and the little
+// notes you get when you look at things.
 
 import * as THREE from "three";
 import type { PersonLook } from "../scene/people";
-import { createCamp, type Spot } from "./camp";
+import { clampWalk, settle, type Area, type Spot } from "./area";
 import { Controls } from "./controls";
 import { loadFox, type Fox } from "./fox";
 import { loader } from "../scene/kits";
@@ -34,34 +35,20 @@ const MAX_PITCH = 1.08;
 const TURN_PER_PX = 0.0045;
 const TILT_PER_PX = 0.003;
 
-/** What you notice when you look at things. Each look shows the next line. */
-const NOTES: Record<string, string[]> = {
-  fire: [
-    "Sparks drift up toward the first stars.",
-    "Della's kindling, dry as a bone. She thinks of everything.",
-  ],
-  tent: [
-    "Your tent. Old canvas, a little patched, but it kept the storm out.",
-    "Your bedroll is unrolled and waiting.",
-  ],
-  supplies: [
-    "Apples, a coil of rope and a barrel of water. Della packed more than you'll need.",
-    "There's a note tucked in the apple crate: \"Eat the bruised ones first. - D.\"",
-  ],
-  sign: [
-    "THE SUMMIT, says the sign, pointing up the trail. The first leg opens here soon.",
-    "Far off through the trees, the lantern on the Summit is still burning.",
-  ],
-  cart: [
-    "An old hand cart with a wobbly wheel. Someone left it here for whoever needs it.",
-    "Maybe one day it'll carry things back from the trail.",
-  ],
-};
-
 export interface CampOptions {
   renderer: THREE.WebGLRenderer;
   canvas: HTMLCanvasElement;
   look: PersonLook;
+  /** Builds the place to walk around (camp, or a leg of the trail). */
+  build(renderer: THREE.WebGLRenderer, look: PersonLook): Area;
+  /** Arrive here instead of the area's usual starting spot. */
+  startAt?: { x: number; z: number; facing: number };
+  /** A spot whose id starts with "exit:" was used (setting out, making camp...). */
+  onExit?(id: string): void;
+  /** Something was picked up. Returns the note to show. */
+  onGather?(spot: Spot): string;
+  /** Talking to someone or using something special. Return a note to show, or null for the area's own notes. */
+  onUse?(spot: Spot): string | null;
   /** Called the first time the traveler moves, to hide the how-to hint. */
   onFirstMove?(): void;
   /** A soft click for the action button. */
@@ -81,18 +68,25 @@ export interface CampSession {
   distanceToFire(): number;
   /** Show a little note at the bottom of the screen. */
   note(text: string): void;
+  /** Take everything off the screen (leaving for another area). */
+  dispose(): void;
 }
 
 export function startCamp(opts: CampOptions): CampSession {
-  const camp = createCamp(opts.renderer, opts.look);
+  const camp = opts.build(opts.renderer, opts.look);
   const { traveler, camera } = camp;
   const pos = traveler.root.position;
+  const start = opts.startAt ?? camp.start;
+  pos.set(start.x, 0, start.z);
+  traveler.root.rotation.y = start.facing;
 
   // The fox companion. It comes from outside the repo (see fox.ts), so camp
   // works fine without it if it can't be fetched.
   let fox: Fox | null = null;
+  let gone = false;
   loadFox(loader, camp)
     .then((f) => {
+      if (gone) return;
       f.placeAt(pos.x - 0.8, pos.z + 0.6, traveler.root.rotation.y);
       fox = f;
     })
@@ -109,6 +103,8 @@ export function startCamp(opts: CampOptions): CampSession {
   let seated = false;
   let facing = traveler.root.rotation.y;
   let speed = 0;
+  /** Seconds left of a pick-up (the traveler stays put while they bend down). */
+  let busy = 0;
   const noteCount: Record<string, number> = {};
 
   // ---------- the tap marker: a little ring on the ground ----------
@@ -172,13 +168,10 @@ export function startCamp(opts: CampOptions): CampSession {
   });
 
   function walkTo(x: number, z: number, spot: Spot | null) {
+    if (busy > 0) return;
     standUp();
-    // keep the goal inside the clearing
-    const r = Math.hypot(x, z);
-    if (r > camp.radius - BODY) {
-      x *= (camp.radius - BODY) / r;
-      z *= (camp.radius - BODY) / r;
-    }
+    // keep the goal on ground you can walk on
+    ({ x, z } = clampWalk(camp.walk, x, z, BODY));
     target = { x, z, spot };
     waypoints = route(pos.x, pos.z, x, z);
     stuckTime = 0;
@@ -231,7 +224,14 @@ export function startCamp(opts: CampOptions): CampSession {
   }
 
   function use(spot: Spot | null) {
-    if (!spot) return;
+    if (!spot || busy > 0) return;
+    if (spot.id.startsWith("exit:")) {
+      facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
+      hideNote();
+      opts.onExit?.(spot.id);
+      return;
+    }
+    if (spot.gather) return pickUp(spot);
     if (spot.id === "bench") {
       if (seated) standUp();
       else sitDown();
@@ -245,13 +245,35 @@ export function startCamp(opts: CampOptions): CampSession {
     }
     // turn to face it, then say what you notice
     facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
-    const lines = NOTES[spot.id] ?? [];
+    const special = opts.onUse?.(spot);
+    if (special) {
+      traveler.gesture("Interact");
+      return showNote(special);
+    }
+    const lines = camp.notes[spot.id] ?? [];
     const n = noteCount[spot.id] ?? 0;
     noteCount[spot.id] = n + 1;
     if (lines.length) showNote(lines[n % lines.length]);
   }
 
+  /** Bend down, pick it up, and pop it in the satchel. */
+  function pickUp(spot: Spot) {
+    facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
+    target = null;
+    busy = 1.05;
+    traveler.gesture("PickUp");
+    // the hand reaches the ground partway through the bend
+    setTimeout(() => {
+      if (gone) return;
+      camp.spots.splice(camp.spots.indexOf(spot), 1);
+      camp.pick?.(spot, new THREE.Vector3(pos.x, 0.9, pos.z));
+      const text = opts.onGather?.(spot);
+      if (text) showNote(text);
+    }, 450);
+  }
+
   function sitDown() {
+    if (!camp.seat) return;
     seated = true;
     target = null;
     pos.set(camp.seat.x + 0.05, 0, camp.seat.z);
@@ -260,7 +282,7 @@ export function startCamp(opts: CampOptions): CampSession {
   }
 
   function standUp() {
-    if (!seated) return;
+    if (!seated || !camp.seat) return;
     seated = false;
     pos.set(camp.seat.x - 0.75, 0, camp.seat.z);
   }
@@ -269,23 +291,7 @@ export function startCamp(opts: CampOptions): CampSession {
   function step(dx: number, dz: number) {
     pos.x += dx;
     pos.z += dz;
-    for (let pass = 0; pass < 2; pass++) {
-      for (const b of camp.blockers) {
-        const ox = pos.x - b.x, oz = pos.z - b.z;
-        const d = Math.hypot(ox, oz);
-        const min = b.r + BODY;
-        if (d < min && d > 1e-4) {
-          pos.x = b.x + (ox / d) * min;
-          pos.z = b.z + (oz / d) * min;
-        }
-      }
-      const r = Math.hypot(pos.x, pos.z);
-      const max = camp.radius - BODY;
-      if (r > max) {
-        pos.x *= max / r;
-        pos.z *= max / r;
-      }
-    }
+    settle(pos, camp.blockers, camp.walk, BODY);
   }
 
   // for testing in the browser console (dev server only)
@@ -303,10 +309,27 @@ export function startCamp(opts: CampOptions): CampSession {
   /** The spot the camera circles around: just above the traveler, following gently. */
   const focus = new THREE.Vector3().copy(pos).setY(0);
   const camLook = new THREE.Vector3();
-  const placeCamera = () => {
-    const flat = Math.cos(pitch) * dist;
+  /**
+   * How far the camera can really go before a house is in the way. It slides
+   * in front of the wall or roof, then eases back out once the way is clear.
+   */
+  let reach = dist;
+  const ray = new THREE.Ray();
+  const hitAt = new THREE.Vector3();
+  const placeCamera = (dt = 0) => {
+    const flat = Math.cos(pitch);
     camLook.copy(focus).add(CAM_LOOK);
-    camera.position.set(focus.x + Math.sin(yaw) * flat, focus.y + Math.sin(pitch) * dist, focus.z + Math.cos(yaw) * flat);
+    ray.origin.copy(camLook);
+    ray.direction.set(Math.sin(yaw) * flat, Math.sin(pitch), Math.cos(yaw) * flat);
+    let room = dist;
+    for (const box of camp.cameraBlocks ?? []) {
+      // standing right under the eaves: nothing sensible to do, so leave the camera be
+      if (box.containsPoint(camLook)) continue;
+      if (ray.intersectBox(box, hitAt)) room = Math.min(room, Math.max(1.6, hitAt.distanceTo(camLook) - 0.35));
+    }
+    // snap in at once (never show the inside of a roof), ease back out
+    reach = room < reach || dt === 0 ? room : reach + (room - reach) * (1 - Math.exp(-dt * 3));
+    camera.position.copy(camLook).addScaledVector(ray.direction, reach).sub(CAM_LOOK);
     camera.lookAt(camLook);
   };
   placeCamera();
@@ -314,6 +337,12 @@ export function startCamp(opts: CampOptions): CampSession {
   return {
     ready: camp.ready,
     note: showNote,
+    dispose() {
+      gone = true;
+      controls.setAction(null);
+      controls.dispose();
+      note.remove();
+    },
     setPaused(p) {
       paused = p;
       controls.enabled = !p;
@@ -326,7 +355,10 @@ export function startCamp(opts: CampOptions): CampSession {
       // ---------- moving ----------
       let want = 0;
       let dirX = 0, dirZ = 0;
-      if (!paused && controls.steering) {
+      if (busy > 0) busy -= paused ? 0 : dt;
+      if (busy > 0) {
+        // picking something up: stay put
+      } else if (!paused && controls.steering) {
         // Push the stick up and you walk away from the camera, whichever way it faces.
         const m = controls.move;
         const amount = Math.min(1, Math.hypot(m.x, m.y));
@@ -382,11 +414,11 @@ export function startCamp(opts: CampOptions): CampSession {
       // sitting down and getting up
       sitting += ((seated ? 1 : 0) - sitting) * Math.min(1, dt * 6);
       traveler.setSit(sitting);
-      pos.y = sitting * camp.seat.y;
+      pos.y = sitting * (camp.seat?.y ?? 0);
 
       // ---------- the action button ----------
       if (!paused) {
-        const spot = target ? null : nearest();
+        const spot = target || busy > 0 ? null : nearest();
         controls.setAction(spot ? (spot.id === "bench" && seated ? "Stand up" : spot.label) : null);
       }
 
@@ -417,7 +449,7 @@ export function startCamp(opts: CampOptions): CampSession {
       yaw += (wantYaw - yaw) * turn;
       pitch += (wantPitch - pitch) * turn;
       focus.lerp(new THREE.Vector3().copy(pos).setY(0), 1 - Math.exp(-dt * 4));
-      placeCamera();
+      placeCamera(dt);
 
       fox?.update(paused ? 0 : dt, pos.x, pos.z, traveler.root.rotation.y, seated);
       camp.update(dt, time);
@@ -429,7 +461,7 @@ export function startCamp(opts: CampOptions): CampSession {
       camp.resize();
     },
     distanceToFire() {
-      return Math.hypot(pos.x, pos.z);
+      return camp.fire ? Math.hypot(pos.x - camp.fire.x, pos.z - camp.fire.z) : 99;
     },
   };
 }

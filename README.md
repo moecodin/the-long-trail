@@ -5,7 +5,9 @@ tracker. You walk a traveler from Lowmeadow to the Summit, one trail leg a week.
 
 What's playable so far: the opening (**The Lantern Wakes** intro and the
 mirror where you pick and name your traveler), then **camp** (Milestone 1),
-where you walk your traveler around a clearing at dusk.
+where you walk your traveler around a clearing at dusk, and **Leg 1** of the
+trail (Milestone 3, in progress): Della's yard and the lane out of Lowmeadow,
+with herbs, apples and eggs to gather.
 
 ## The satchel journal (the tracker)
 
@@ -55,6 +57,25 @@ Resend) before other people play.
 - The satchel has **Change traveler** if you want to pick someone else.
 - **The fox** follows you around: it walks or scampers to catch up, and waits
   beside you (glancing up now and then) when you stop.
+
+## Leg 1: The Lantern in the Window
+
+At camp, walk to the trail sign and press **Set out**. You arrive at the south
+end of Della's yard at dusk: her cottage with the lantern in the window, the
+herb bed, the hen house and the apple tree. The garden gate opens onto the lane
+north out of Lowmeadow, past the neighbors' cottages and the well, to a ring of
+stones where you **Make camp**. The signpost where you arrive takes you **Back
+to camp** any time.
+
+**Gathering:** anything with a soft gold ring and sparkles can be picked. Walk
+up and press **Pick** (or tap it). The traveler bends down, it floats into the
+satchel, and the journal's **Gathered** page counts it. Every spot grows back
+the next morning (the journal's day starts at 4 a.m.). Leg 1 has thyme, chives
+and sage in the herb bed, eggs by the hen house, windfall apples under the
+apple tree, and chamomile and field mushrooms along the lane. The models are in
+`src/trail/gather.ts` (`ITEMS`), so swapping one is a one-line change.
+
+Add `?from=leg1` to the address (dev server) to start right in Leg 1.
 
 ## Play it
 
