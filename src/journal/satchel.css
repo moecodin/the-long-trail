@@ -55,3 +55,6 @@
   .j-book.s-bag { padding: 7px; gap: 7px; }
   .s-slots { grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); }
 }
+
+/* only the first heading needs to clear the close button */
+.s-bag .j-page:first-of-type h2:not(:first-child) { padding-left: 0; }
