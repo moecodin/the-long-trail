@@ -16,7 +16,7 @@ export interface Item {
   name: string;
   /** A short line for the note when you pick one. */
   pickLines: string[];
-  /** What the journal's Gathered page says about it. */
+  /** What the satchel's Items page says about it. */
   about: string;
   /** Where to find it in Leg 1. */
   where: string;

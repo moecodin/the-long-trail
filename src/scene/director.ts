@@ -1,5 +1,5 @@
 // A tiny "film director" for scripted scenes. It keeps its own clock, which
-// stops while the satchel journal is open, so the intro pauses and picks up
+// stops while the journal or satchel is open, so the intro pauses and picks up
 // right where it was. Skipping makes every pending wait throw Skip, which
 // ends the scene straight away.
 

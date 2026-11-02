@@ -4,7 +4,7 @@
 //   title screen -> "The Lantern Wakes" intro -> the mirror (pick and name
 //   your traveler) -> Della in the doorway -> camp at dusk (Milestone 1).
 // Coming back later, "Tap to begin" goes straight to camp.
-// The satchel journal button is mounted first, so it's there on every screen.
+// The journal and satchel buttons are mounted first, so they are there on every screen.
 
 import "./style.css";
 import * as THREE from "three";
@@ -57,8 +57,8 @@ rotateNotice.className = "rotate-notice";
 rotateNotice.innerHTML = `<div class="rotate-phone"></div><p>Turn your phone sideways to play</p><p class="muted">The Long Trail is played in landscape.</p>`;
 document.body.appendChild(rotateNotice);
 
-// 1. The satchel comes first, before any 3D, so logging is never behind a loading screen.
-const journal = mountSatchel({
+// 1. The journal and satchel come first, before any 3D, so logging is never behind a loading screen.
+const { journal, satchel } = mountSatchel({
   muted: save.muted,
   onOpen: () => {
     journalOpen = true;
@@ -85,7 +85,10 @@ const journal = mountSatchel({
     location.reload();
   },
   onChange: () => sync.schedule(),
-  gathered: () => ITEMS.map((i) => ({ id: i.id, name: i.name, count: save.gather.gathered[i.id] ?? 0, about: i.about, where: i.where })),
+  satchel: {
+    gathered: () => ITEMS.map((i) => ({ id: i.id, name: i.name, count: save.gather.gathered[i.id] ?? 0, about: i.about, where: i.where })),
+    game: () => save,
+  },
   firstLine: () => save.firstLine || null,
   onRested: () => camp?.note("You bank the fire and crawl into your tent. The day is written down. Goodnight."),
 });
@@ -115,7 +118,10 @@ const sync = new Sync(journal, {
   },
 });
 if (import.meta.env.MODE !== "preview") journal.sync = sync;
-sync.onStatus = () => journal.refresh();
+sync.onStatus = () => {
+  journal.refresh();
+  satchel.refresh();
+};
 // Coming back to the game on a new day shows yesterday's page first.
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && mode === "camp") journal.greetNewDay();
@@ -368,7 +374,7 @@ const FROM_TRAIL = { x: 0.6, z: -6.2, facing: 0 };
 
 /** The satchel button gives a little hop when something goes in. */
 function bumpSatchel() {
-  const b = document.querySelector(".satchel-btn");
+  const b = document.querySelector(".bag-btn");
   b?.classList.remove("bump");
   void (b as HTMLElement | null)?.offsetWidth;
   b?.classList.add("bump");
