@@ -1,12 +1,14 @@
-// The satchel journal: an open field journal with bookmark tabs on its edge.
+// The journal: an open field journal with bookmark tabs on its edge. It holds
+// your real-life days; the game's things (items, cards, map) are in the
+// satchel (src/journal/satchel.ts).
 //
-//   Today       what you've eaten, protein, fiber and the canteen (water)
-//   Log         write down a meal (name + calories, the rest is optional)
-//   Meals       meals you've saved (one tap to add again) and your recipes
-//   Cards       the trail card album: recipes now, places and critters later
-//   Trends      the last 7 or 30 days, drawn as small charts
-//   Scale       weigh-ins and the weekly averages (the only thing the game reads)
-//   Setup       units, your details, the daily targets and a few options
+//   Today       what you've eaten, protein, fiber and the canteen (water),
+//               with Log a meal (name + calories, the rest is optional)
+//   Meals       meals you've saved (one tap to add again) and your recipes,
+//               the starters and the ones found on the trail
+//   Weight      weigh-ins and weekly averages (the only thing the game reads),
+//               and how you've eaten over the last 7 or 30 days
+//   (gear)      Setup: units, your details, the daily targets and a few options
 //
 // Plus three pages that open on their own: first-time setup, "Rest at camp"
 // at the end of the day, and a look back at yesterday the first time you open
@@ -49,11 +51,12 @@ import {
   type Units,
 } from "./data";
 import type { Sync } from "./sync";
-import { cardArt, dayDoodle, doodle, moodDoodle } from "./doodles";
-import { KIND_LABEL, WAITING, knownRecipes, recipe, type CardKind, type Recipe } from "./recipes";
+import { dayDoodle, doodle, moodDoodle } from "./doodles";
+import { knownRecipes, recipe } from "./recipes";
+import { trailCard } from "./cards";
 import "./journal.css";
 
-export type JournalPage = "today" | "log" | "meals" | "cards" | "gathered" | "trends" | "scale" | "setup";
+export type JournalPage = "today" | "log" | "meals" | "trends" | "scale" | "setup";
 type Screen = JournalPage | "welcome" | "rest" | "yesterday" | "recipe";
 
 export interface JournalOptions {
@@ -66,34 +69,20 @@ export interface JournalOptions {
   onRested?(): void;
   /** Called after every change, so it can be synced. */
   onChange?(d: JournalData): void;
-  /** Everything you can gather on the trail, and how many of each you've picked (the game keeps these). */
-  gathered?(): GatheredItem[];
   /** The line you wrote on the journal's first page, for yourself at the Summit. */
   firstLine?(): string | null;
+  /** Go back to the satchel's card album (a recipe opened from a card goes back there). */
+  openSatchelCards?(): void;
 }
 
-/** One kind of thing you can pick on the trail, for the Gathered page. */
-export interface GatheredItem {
-  id: string;
-  name: string;
-  count: number;
-  about: string;
-  where: string;
-}
-
-const TABS: { id: JournalPage; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "log", label: "Log" },
-  { id: "meals", label: "Meals" },
-  { id: "cards", label: "Cards" },
-  { id: "gathered", label: "Gather" },
-  { id: "trends", label: "Trends" },
-  { id: "scale", label: "Scale" },
-  { id: "setup", label: "Setup" },
+/** The bookmark tabs, and which screens light each one up. */
+const TABS: { id: JournalPage; label: string; screens: Screen[] }[] = [
+  { id: "today", label: "Today", screens: ["today", "log"] },
+  { id: "meals", label: "Meals", screens: ["meals"] },
+  { id: "scale", label: "Weight", screens: ["scale", "trends"] },
 ];
 
-/** The trail card frame and back, from Quaternius' 3D Card Kit (see tools/render-card-frames.mjs). */
-const CARD_IMG = `${import.meta.env.BASE_URL}cards/`;
+const GEAR = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.0 10.3 L21.5 10.4 L21.5 13.6 L19.0 13.7 L18.2 15.7 L19.8 17.5 L17.5 19.8 L15.7 18.2 L13.7 19.0 L13.6 21.5 L10.4 21.5 L10.3 19.0 L8.3 18.2 L6.5 19.8 L4.2 17.5 L5.8 15.7 L5.0 13.7 L2.5 13.6 L2.5 10.4 L5.0 10.3 L5.8 8.3 L4.2 6.5 L6.5 4.2 L8.3 5.8 L10.3 5.0 L10.4 2.5 L13.6 2.5 L13.7 5.0 L15.7 5.8 L17.5 4.2 L19.8 6.5 L18.2 8.3Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>`;
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 const num = (v: FormDataEntryValue | string | null | undefined) => {
@@ -146,10 +135,6 @@ export class Journal {
   /** The recipe open on the recipe page, and which tab it was opened from. */
   private recipeId = "";
   private recipeBack: "meals" | "cards" = "cards";
-  /** The card picked in the album (a recipe id, or "waiting-N"). */
-  private cardPick = "";
-  /** The thing picked on the Gathered page. */
-  private itemPick = "";
   /** Each day's stamp as last drawn, so a newly inked stamp can thump down. */
   private stampsDrawn = new Map<string, string>();
 
@@ -197,6 +182,15 @@ export class Journal {
     this.render();
   }
 
+  /** Open a recipe's page (the satchel's cards do this). */
+  openRecipe(id: string, from: "meals" | "cards" = "meals") {
+    if (!recipe(id) || !this.d.settings.setupDone) return this.open();
+    this.recipeId = id;
+    this.recipeBack = from;
+    this.open("meals");
+    this.go("recipe");
+  }
+
   /** On a new day, show yesterday's summary right away (called once the game starts). */
   greetNewDay() {
     autoRest(this.d);
@@ -241,8 +235,9 @@ export class Journal {
     if (!this.panel) return;
     const s = this.screen;
     const [left, right] = this.pages(s);
-    const tab = s === "recipe" ? this.recipeBack : s;
-    const tabbed = (TABS as { id: string }[]).some((t) => t.id === tab);
+    const shown = s === "recipe" && this.recipeBack === "meals" ? "meals" : s;
+    const tab = TABS.find((t) => t.screens.includes(shown))?.id;
+    const tabbed = !!tab || s === "setup" || s === "recipe";
     const name = this.opts.travelerName();
     this.panel.innerHTML = `
       <div class="j-book" role="dialog" aria-label="${name ? `${esc(name)}'s journal` : "Your journal"}">
@@ -252,7 +247,7 @@ export class Journal {
           tabbed
             ? `<div class="j-tabs" role="tablist">${TABS.map(
                 (t) => `<button role="tab" aria-selected="${t.id === tab}" data-go="${t.id}">${t.label}</button>`,
-              ).join("")}</div>`
+              ).join("")}<button class="j-gear" data-go="setup" aria-label="Setup" aria-pressed="${s === "setup"}">${GEAR}</button></div>`
             : ""
         }
         <section class="j-page">${left}</section>
@@ -273,10 +268,6 @@ export class Journal {
         return this.logPages();
       case "meals":
         return this.mealsPages();
-      case "cards":
-        return this.cardsPages();
-      case "gathered":
-        return this.gatheredPages();
       case "recipe":
         return this.recipePages();
       case "trends":
@@ -528,104 +519,17 @@ export class Journal {
     </div>`;
   }
 
-  // ---------- trail cards ----------
-
-  /** One trail card in the Card Kit frame. Recipes are the only cards so far. */
-  private card(r: Recipe | null, opts: { big?: boolean; still?: boolean; picked?: boolean; waiting?: { kind: CardKind; hint: string }; n?: number } = {}) {
-    const cls = `tc ${r ? "recipe" : "back"}${opts.big ? " big" : ""}`;
-    const label = r ? `${esc(r.name)} recipe card` : `A ${KIND_LABEL[opts.waiting!.kind].toLowerCase()} card still out on the trail`;
-    // the album's cards are buttons; a card shown on its own is just a picture
-    const open = opts.still
-      ? `<div class="${cls}" role="img" aria-label="${label}">`
-      : `<button class="${cls}" data-act="pick-card" data-id="${r ? r.id : `waiting-${opts.n}`}" aria-pressed="${!!opts.picked}" aria-label="${label}">`;
-    const close = opts.still ? "</div>" : "</button>";
-    if (!r) return `${open}<img src="${CARD_IMG}back.png" alt="" draggable="false">${close}`;
-    return `${open}
-      <span class="tc-window">
-        <span class="tc-kind">Recipe</span>
-        ${cardArt(r.id)}
-        <span class="tc-name">${esc(r.name)}</span>
-        ${opts.big ? `<span class="tc-line">${esc(r.line)}</span>` : ""}
-      </span>
-      <img class="tc-frame" src="${CARD_IMG}frame.png" alt="" draggable="false">${close}`;
-  }
-
-  private cardsPages(): [string, string] {
-    const known = knownRecipes();
-    if (!this.cardPick) this.cardPick = known[0]?.id ?? "";
-    const pick = this.cardPick;
-    const grid = [
-      ...known.map((r) => this.card(r, { picked: r.id === pick })),
-      ...WAITING.map((w, n) => this.card(null, { waiting: w, n, picked: pick === `waiting-${n}` })),
-    ].join("");
-    const r = recipe(pick);
-    const w = pick.startsWith("waiting-") ? WAITING[Number(pick.slice(8))] : null;
-    const right = r
-      ? `<div class="tc-show">${this.card(r, { big: true, still: true })}
-           <div class="tc-about">
-             <h2>${esc(r.name)}</h2>
-             <p class="j-date">${r.meal} · serves ${r.serves}</p>
-             <p class="j-small j-faint">${r.minutes}</p>
-             <div class="j-spread"><button class="j-btn small" data-act="open-recipe" data-id="${r.id}" data-from="cards">Open the recipe</button></div>
-           </div></div>`
-      : w
-        ? `<div class="tc-show">${this.card(null, { big: true, still: true, waiting: w })}
-           <div class="tc-about">
-             <h2>Still on the trail</h2>
-             <p class="j-date">A ${KIND_LABEL[w.kind].toLowerCase()} card</p>
-             <p class="hand">${esc(w.hint)}…</p>
-           </div></div>`
-        : "";
-    return [
-      `<h2>Trail cards</h2>
-       <p class="j-date">${known.length} found so far. Tap one to look closer</p>
-       <div class="tc-grid">${grid}</div>`,
-      right,
-    ];
-  }
-
-  // ---------- gathered ----------
-
-  private gatheredPages(): [string, string] {
-    const items = this.opts.gathered?.() ?? [];
-    const found = items.filter((i) => i.count > 0);
-    if (!items.some((i) => i.id === this.itemPick)) this.itemPick = (found[0] ?? items[0])?.id ?? "";
-    const it = items.find((i) => i.id === this.itemPick);
-    const total = found.reduce((n, i) => n + i.count, 0);
-    return [
-      `<h2>Gathered</h2>
-       <p class="j-date">${found.length ? `${total} picked on the trail so far` : "Nothing picked yet. Look for a sparkle on the trail"}</p>
-       <ul class="j-gathered">${items
-         .map(
-           (i) => `<li><button class="j-item${i.count ? "" : " j-unfound"}" data-act="pick-item" data-id="${i.id}" aria-pressed="${i.id === this.itemPick}">
-             <span class="j-gi">${doodle(i.id === "chamomile" ? "flower" : i.id, "j-gdoodle")}${i.count ? esc(i.name) : "Not found yet"}</span>
-             <span class="hand">${i.count ? `× ${i.count}` : ""}</span></button></li>`,
-         )
-         .join("")}</ul>`,
-      it
-        ? `<div class="j-gshow">${doodle(it.id === "chamomile" ? "flower" : it.id, "j-gbig")}
-             <div class="tc-about">
-               <h2>${it.count ? esc(it.name) : "Still out there"}</h2>
-               <p class="j-date">${esc(it.where)}</p>
-               ${it.count ? `<p class="hand">${it.count} in your satchel</p>` : ""}
-             </div></div>
-           ${it.count ? `<p class="j-note">${esc(it.about)}</p>` : `<p class="j-note j-faint">Something grows ${esc(it.where.toLowerCase())}. Walk up to the sparkle and tap Pick.</p>`}
-           <p class="j-small j-faint">Everything you pick grows back the next morning. Some recipes need these, so keep an eye out.</p>`
-        : "",
-    ];
-  }
-
   // ---------- a recipe ----------
 
   private recipePages(): [string, string] {
     const r = recipe(this.recipeId);
-    if (!r) return this.cardsPages();
+    if (!r) return this.mealsPages();
     const hide = this.d.settings.hideKcal;
     const row = (label: string, v: string) => `<div class="j-row"><span>${label}</span><span class="hand">${v}</span></div>`;
     return [
       `<h2>${esc(r.name)}</h2>
        <p class="j-date">${r.meal} · serves ${r.serves} · ${r.minutes}</p>
-       <div class="tc-show">${this.card(r, { still: true })}
+       <div class="tc-show">${trailCard(r, { still: true })}
          <div class="j-tile tc-about">
            <span class="j-small j-faint">Each serving, about</span>
            ${hide ? "" : row("Calories", `${fmt(r.kcal)} kcal`)}
@@ -634,7 +538,7 @@ export class Journal {
        </div>
        <div class="j-spread">
          <button class="j-btn" data-act="log-recipe">Log a serving</button>
-         <button class="j-link" data-go="${this.recipeBack}">Back to ${this.recipeBack === "cards" ? "cards" : "recipes"}</button>
+         ${this.recipeBack === "cards" ? `<button class="j-link" data-act="back-cards">Back to your cards</button>` : `<button class="j-link" data-go="meals">Back to recipes</button>`}
        </div>`,
       `<h2>You'll need</h2>
        <ul class="j-ingredients">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>
@@ -661,7 +565,7 @@ export class Journal {
       .join("")}</div>`;
     const hide = this.d.settings.hideKcal;
     return [
-      `<h2>Trends</h2>
+      `${this.weightSwitch("trends")}
        ${toggle}
        ${
          hide
@@ -679,6 +583,18 @@ export class Journal {
     ];
   }
 
+  /** The Weight tab holds two spreads: the scale, and how you've eaten. */
+  private weightSwitch(on: "scale" | "trends") {
+    return `<div class="j-seg j-sub">${(
+      [
+        ["scale", "Weigh-ins"],
+        ["trends", "How I've eaten"],
+      ] as const
+    )
+      .map(([id, label]) => `<button data-go="${id}" aria-pressed="${id === on}">${label}</button>`)
+      .join("")}</div>`;
+  }
+
   // ---------- scale ----------
 
   private scalePages(): [string, string] {
@@ -691,7 +607,8 @@ export class Journal {
       note = b.kg < a.kg - 0.05 ? "Lighter than last week" : b.kg > a.kg + 0.05 ? "A little up this week" : "Steady this week";
     }
     return [
-      `<h2>Weekly averages</h2>
+      `${this.weightSwitch("scale")}
+       <h2>Weekly averages</h2>
        <p class="j-date">The trail only ever reads these, never a single day</p>
        ${weeks.length ? lineChart(weeks.map((w) => ({ label: `Week of ${shortDay(w.week)}`, v: toDisplayWeight(w.kg, u) })), u) : `<p class="hand j-faint">Your first weigh-in starts the chart.</p>`}
        ${note ? `<p><span class="j-stamp">${note}</span></p>` : ""}
@@ -1105,17 +1022,13 @@ export class Journal {
         this.go("today");
         return this.toast("A fresh page for today");
       }
-      case "pick-card":
-        this.cardPick = id;
-        return this.render();
-      case "pick-item":
-        this.itemPick = id;
-        return this.render();
       case "open-recipe":
         this.recipeId = id;
-        this.recipeBack = b.dataset.from === "meals" ? "meals" : "cards";
-        this.cardPick = id;
+        this.recipeBack = b.dataset.from === "cards" ? "cards" : "meals";
         return this.go("recipe");
+      case "back-cards":
+        this.close();
+        return this.opts.openSatchelCards?.();
       case "log-recipe": {
         const r = recipe(this.recipeId);
         if (!r) return;

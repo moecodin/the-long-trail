@@ -25,6 +25,10 @@ const D: Record<string, string> = {
   chives: `<path d="M11 29C11 19 9 11 6 4M14.5 29c0-10 0-17 1-25M18 29c0-9 2-16 5-22M21.5 29c0-7 3-11 6-14"/><circle cx="6" cy="4" r="1.8"/><path d="M8 29h16"/>`,
   sage: `<path d="M16 30V13"/><path d="M16 23C9 23 6 18 7 12c6 0 9 5 9 11ZM16 18c6 0 9-5 8-11-6 0-8 5-8 11Z"/><path d="M16 23l-5-5M16 18l4.5-5"/>`,
   egg: `<path d="M16 4c-6 0-10 10-10 16a10 10 0 0 0 20 0C26 14 22 4 16 4Z"/><path d="M4 29c4-2 8-2 12-1s8 1 12-1"/>`,
+  stick: `<path d="M9 30L22 5"/><path d="M22 5c1.5-1 3-.5 3.5 1M17 14.5l3 1.5M13.5 21l-2.5-1.5"/>`,
+  spoon: `<ellipse cx="10" cy="9" rx="5" ry="6.5" transform="rotate(-35 10 9)"/><path d="M13.5 13.5L27 28"/>`,
+  map: `<path d="M4 8l7-3 10 3 7-3v19l-7 3-10-3-7 3Z"/><path d="M11 5v19M21 8v19"/><path d="M7 18c3-1 4-5 8-4s5 4 9 1" stroke-dasharray="1.5 2"/>`,
+  gate: `<path d="M5 29V6M27 29V6M5 11h22M5 23h22M9 11v12M14 11v12M18 11v12M23 11v12"/>`,
   feather: `<path d="M8 28C9 16 15 7 26 4c-1 11-8 18-18 24Z"/><path d="M8 28L20 12M13 19h5M16 15h4"/>`,
 };
 

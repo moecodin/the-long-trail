@@ -1,4 +1,4 @@
-/* The satchel journal: an open field journal, parchment pages, bookmark tabs. */
+/* The journal: an open field journal, parchment pages, bookmark tabs. The satchel (satchel.css) reuses its pages. */
 
 @font-face { font-family: "Patrick Hand"; src: url("../assets/fonts/PatrickHand.woff2") format("woff2"); font-display: swap; }
 @font-face { font-family: "EB Garamond"; src: url("../assets/fonts/EBGaramond.woff2") format("woff2"); font-weight: 400 600; font-display: swap; }
@@ -30,6 +30,13 @@
 .j-tabs { position: absolute; right: -46px; top: 14px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
 .j-tabs button { flex: 1 1 0; min-height: 0; max-height: 92px; writing-mode: vertical-rl; font: 600 0.85rem var(--j-serif); padding: 4px 6px; width: 44px; border: 1px solid #6b4a2a55; border-left: none; border-radius: 0 8px 8px 0; background: #d9bf8f; color: var(--j-ink); white-space: nowrap; overflow: hidden; }
 .j-tabs button[aria-selected="true"] { background: var(--j-paper); box-shadow: 2px 2px 6px #0005; }
+/* the gear for Setup sits under the tabs, as a short round-ended tab */
+.j-tabs .j-gear { flex: 0 0 44px; writing-mode: horizontal-tb; display: grid; place-items: center; padding: 8px; margin-top: auto; }
+.j-tabs .j-gear svg { width: 100%; height: 100%; }
+.j-tabs .j-gear[aria-pressed="true"] { background: var(--j-paper); box-shadow: 2px 2px 6px #0005; }
+/* Weight's two spreads: weigh-ins, and how you've eaten */
+.j-sub { margin-bottom: 2px; align-self: flex-start; }
+.j-page:first-of-type .j-sub { margin-left: 24px; }
 
 .j-page { padding: 14px 24px 14px 30px; display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .j-page + .j-page { padding: 14px 26px 14px 28px; }
