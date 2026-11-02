@@ -239,7 +239,7 @@ export function startCamp(opts: CampOptions): CampSession {
       else sitDown();
       return;
     }
-    if (spot.id === "fire" && opts.onRest) {
+    if ((spot.id === "fire" || spot.id === "bedroll") && opts.onRest) {
       facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
       hideNote();
       opts.onRest();

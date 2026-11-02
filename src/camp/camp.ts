@@ -29,10 +29,6 @@ const NOTES: Record<string, string[]> = {
     "Sparks drift up toward the first stars.",
     "Della's kindling, dry as a bone. She thinks of everything.",
   ],
-  tent: [
-    "Your tent. Old canvas, a little patched, but it kept the storm out.",
-    "Your bedroll is unrolled and waiting.",
-  ],
   supplies: [
     "Apples, a coil of rope and a barrel of water. Della packed more than you'll need.",
     "There's a note tucked in the apple crate: \"Eat the bruised ones first. - D.\"",
@@ -84,6 +80,15 @@ function signTexture(): THREE.Texture {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+/** Where the tent stands at camp, and which way its opening faces (toward the fire and the camera). */
+const TENT = { x: -3.7, z: -2.3 };
+const TENT_FACING = 0.75;
+/** Just outside the tent's flaps, facing out: where you come back out to camp. */
+export const FROM_TENT = (() => {
+  const d = 2.3 / 2 + 0.75;
+  return { x: TENT.x + Math.sin(TENT_FACING) * d, z: TENT.z + Math.cos(TENT_FACING) * d, facing: TENT_FACING };
+})();
 
 /** What camp shows of your progress: your keepsake, and the tools you carry. */
 export type CampSave = Pick<Save, "keepsake" | "tools">;
@@ -236,8 +241,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   };
 
   // ---------- the tent (hand-built: the kits don't have one) ----------
-  const TENT = { x: -3.7, z: -2.3 };
-  const tentFacing = 0.75; // the opening faces the fire and the camera
+  const tentFacing = TENT_FACING;
   const tent = new THREE.Group();
   tent.position.set(TENT.x, 0, TENT.z);
   tent.rotation.y = tentFacing;
@@ -297,7 +301,8 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   pillow.position.set(0, 0.12, -0.85);
   tent.add(pillow);
   const tentFront = new THREE.Vector3(0, 0, TD / 2 + 0.7).applyAxisAngle(new THREE.Vector3(0, 1, 0), tentFacing);
-  spots.push({ id: "tent", label: "Look", x: TENT.x, z: TENT.z, range: 2.3, standX: TENT.x + tentFront.x, standZ: TENT.z + tentFront.z, tapTargets: [tent] });
+  // the tent: walk in through the open flaps (see tent.ts)
+  spots.push({ id: "exit:tent", label: "Go in", x: TENT.x, z: TENT.z, range: 2.3, standX: TENT.x + tentFront.x, standZ: TENT.z + tentFront.z, tapTargets: [tent] });
 
   // ---------- the bench by the fire ----------
   const BENCH = { x: 2.15, z: 0.25 };
