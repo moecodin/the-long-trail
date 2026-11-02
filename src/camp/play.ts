@@ -47,7 +47,7 @@ export interface CampOptions {
   onExit?(id: string): void;
   /** Something was picked up. Returns the note to show. */
   onGather?(spot: Spot): string;
-  /** Talking to someone or using something special. Return a note to show, or null for the area's own notes. */
+  /** Talking to someone or using something special. Return a note to show, "" to say nothing, or null for the area's own handling. */
   onUse?(spot: Spot): string | null;
   /** Called the first time the traveler moves, to hide the how-to hint. */
   onFirstMove?(): void;
@@ -70,6 +70,8 @@ export interface CampSession {
   note(text: string): void;
   /** Take everything off the screen (leaving for another area). */
   dispose(): void;
+  /** Redraw what depends on the save (a new tool, a keepsake...). */
+  refresh(): void;
 }
 
 export function startCamp(opts: CampOptions): CampSession {
@@ -245,10 +247,12 @@ export function startCamp(opts: CampOptions): CampSession {
     }
     // turn to face it, then say what you notice
     facing = Math.atan2(spot.x - pos.x, spot.z - pos.z);
-    const special = opts.onUse?.(spot);
-    if (special) {
+    const special = opts.onUse?.(spot) ?? camp.use?.(spot) ?? null;
+    if (special !== null) {
       traveler.gesture("Interact");
-      return showNote(special);
+      if (special) showNote(special);
+      else hideNote();
+      return;
     }
     const lines = camp.notes[spot.id] ?? [];
     const n = noteCount[spot.id] ?? 0;
@@ -337,6 +341,9 @@ export function startCamp(opts: CampOptions): CampSession {
   return {
     ready: camp.ready,
     note: showNote,
+    refresh() {
+      camp.refresh?.();
+    },
     dispose() {
       gone = true;
       controls.setAction(null);
@@ -451,7 +458,7 @@ export function startCamp(opts: CampOptions): CampSession {
       focus.lerp(new THREE.Vector3().copy(pos).setY(0), 1 - Math.exp(-dt * 4));
       placeCamera(dt);
 
-      fox?.update(paused ? 0 : dt, pos.x, pos.z, traveler.root.rotation.y, seated);
+      fox?.update(paused ? 0 : dt, pos.x, pos.z, traveler.root.rotation.y, seated, camp.interest?.(pos.x, pos.z) ?? null);
       camp.update(dt, time);
     },
     render() {

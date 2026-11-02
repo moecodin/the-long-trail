@@ -11,7 +11,8 @@
 import * as THREE from "three";
 import { makePerson, type PersonLook } from "../scene/people";
 import { instanced, model, place, seeded } from "../scene/kits";
-import { dressTraveler } from "./dressTraveler";
+import { carryTools, dressTraveler } from "./dressTraveler";
+import type { Save } from "../save";
 import { glowTexture, type Area, type Blocker, type Spot } from "./area";
 
 export type { Blocker, Spot } from "./area";
@@ -34,6 +35,18 @@ const NOTES: Record<string, string[]> = {
   supplies: [
     "Apples, a coil of rope and a barrel of water. Della packed more than you'll need.",
     "There's a note tucked in the apple crate: \"Eat the bruised ones first. - D.\"",
+  ],
+  "keepsake:candle": [
+    "Della's little candle lantern, burning low on the barrel. It smells faintly of beeswax.",
+    "\"For the dark bits,\" she said. You keep it lit anyway.",
+  ],
+  "keepsake:flower": [
+    "The pressed meadowflower, tucked in a frame on a little stand by your tent. Still a bit yellow.",
+    "It came from the meadow behind Della's cottage. Lowmeadow, in one flower.",
+  ],
+  "keepsake:spoon": [
+    "Della's wooden spoon, standing in the pot. Worn smooth from a hundred soups.",
+    "There's a nick in the handle where she used to bang it on the pot to call you in.",
   ],
   cart: [
     "An old hand cart with a wobbly wheel. Someone left it here for whoever needs it.",
@@ -71,7 +84,10 @@ function signTexture(): THREE.Texture {
   return tex;
 }
 
-export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): CampWorld {
+/** What camp shows of your progress: your keepsake, and the tools you carry. */
+export type CampSave = Pick<Save, "keepsake" | "tools">;
+
+export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save?: CampSave): CampWorld {
   const scene = new THREE.Scene();
   const dusk = new THREE.Color("#7d6a86");
   scene.background = dusk;
@@ -354,6 +370,72 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
   traveler.root.rotation.y = Math.PI;
   scene.add(traveler.root);
   const frameHooks: ((dt: number) => void)[] = [];
+  const tools = carryTools(traveler);
+  tools.set(save?.tools ?? []);
+  frameHooks.push((dt) => tools.update(dt));
+
+  // ---------- your keepsake from Della's table ----------
+  const keepsake = new THREE.Group();
+  scene.add(keepsake);
+  let keepsakeLight: THREE.PointLight | null = null;
+  function placeKeepsake() {
+    keepsake.clear();
+    keepsakeLight = null;
+    const i = spots.findIndex((s) => s.id.startsWith("keepsake:"));
+    if (i >= 0) spots.splice(i, 1);
+    const k = save?.keepsake;
+    if (!k) return;
+    let at = { x: 0, z: 0, y: 0 };
+    if (k === "candle") {
+      // a small glowing lantern on the supply barrel
+      at = { x: SUPPLY.x, z: SUPPLY.z, y: 0.86 };
+      const frame = flat("#3b3631");
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.16, 0.12), new THREE.MeshStandardMaterial({ color: "#ffe2a0", emissive: "#ffb450", emissiveIntensity: 1.6 }));
+      glass.position.y = 0.1;
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.07, 4), frame);
+      cap.position.y = 0.21;
+      cap.rotation.y = Math.PI / 4;
+      const base = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.03, 0.15), frame);
+      base.position.y = 0.015;
+      keepsakeLight = new THREE.PointLight("#ffb860", 2.2, 4, 1.8);
+      keepsakeLight.position.y = 0.12;
+      keepsake.add(glass, cap, base, keepsakeLight);
+    } else if (k === "flower") {
+      // a pressed flower in a little frame, on a stand by the tent
+      at = { x: TENT.x + 1.9, z: TENT.z - 0.6, y: 0 };
+      const wood = flat("#7a5532");
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.55, 0.05), wood);
+      leg.position.y = 0.27;
+      const board = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.42, 0.04), wood);
+      board.position.y = 0.72;
+      const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.34), flat("#efe4c8"));
+      paper.position.set(0, 0.72, 0.025);
+      const stem = new THREE.Mesh(new THREE.PlaneGeometry(0.012, 0.18), flat("#5c8a3a"));
+      stem.position.set(0, 0.66, 0.03);
+      const bloom = new THREE.Mesh(new THREE.CircleGeometry(0.05, 7), flat("#e8c03a"));
+      bloom.position.set(0, 0.77, 0.03);
+      const heart = new THREE.Mesh(new THREE.CircleGeometry(0.018, 6), flat("#a8642a"));
+      heart.position.set(0, 0.77, 0.032);
+      keepsake.add(leg, board, paper, stem, bloom, heart);
+      keepsake.rotation.y = 0.6;
+    } else {
+      // a wooden spoon standing in the cooking pot
+      at = { x: -0.95, z: 0.75, y: 0.2 };
+      const wood = flat("#b0824e");
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.02, 0.5, 6), wood);
+      handle.position.y = 0.25;
+      const bowl = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), wood);
+      bowl.scale.set(1, 0.4, 1.3);
+      bowl.position.y = 0.02;
+      keepsake.add(handle, bowl);
+      keepsake.rotation.z = 0.3;
+    }
+    keepsake.position.set(at.x, at.y, at.z);
+    keepsake.traverse((o) => (o.castShadow = o instanceof THREE.Mesh));
+    const off = k === "spoon" ? { x: -0.6, z: 1.0 } : k === "candle" ? { x: 1.2, z: 0.2 } : { x: 0.5, z: 1.0 };
+    spots.push({ id: `keepsake:${k}`, label: "Look", x: at.x, z: at.z, range: 1.4, standX: at.x + off.x, standZ: at.z + off.z, tapTargets: [keepsake] });
+  }
+  placeKeepsake();
 
   // a few trees as cones so the clearing has edges before the kits load
   const coneTrees = new THREE.Group();
@@ -553,7 +635,12 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
     fire: { x: 0, z: 0 },
     seat,
     ready,
+    refresh() {
+      tools.set(save?.tools ?? []);
+      placeKeepsake();
+    },
     update(dt, time) {
+      if (keepsakeLight) keepsakeLight.intensity = 2.2 + Math.sin(time * 9) * 0.25 + Math.sin(time * 13.7) * 0.2;
       // the fire flickers
       const flicker = Math.sin(time * 11) * 0.4 + Math.sin(time * 17.3) * 0.3 + Math.sin(time * 5.1) * 0.3;
       fireLight.intensity = 14 + flicker * 3;

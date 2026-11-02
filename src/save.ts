@@ -5,6 +5,7 @@
 import { freshGather, type GatherSave } from "./trail/gather";
 
 export type TravelerId = "ren" | "mara" | "sol";
+export type ToolId = "stick" | "lantern";
 
 export interface Save {
   version: 1;
@@ -19,6 +20,16 @@ export interface Save {
   legsDone: number[];
   /** Legs you've set out on at least once (so the chapter card shows only the first time). */
   legsSeen: number[];
+  /** The trail tools you carry (Della gives the stick and lantern in Leg 1). */
+  tools: ToolId[];
+  /** What you took from Della's table. */
+  keepsake: "candle" | "flower" | "spoon" | null;
+  /** Your line to your future self, on the journal's first page. */
+  firstLine: string;
+  /** Secrets you've found, like "leg1:stone". */
+  secrets: string[];
+  /** Shortcuts you've opened, like "leg1:gate". */
+  shortcuts: string[];
   /** When this last changed (ms), for syncing. */
   updated?: number;
 }
@@ -34,6 +45,11 @@ const fresh = (): Save => ({
   gather: freshGather(),
   legsDone: [],
   legsSeen: [],
+  tools: [],
+  keepsake: null,
+  firstLine: "",
+  secrets: [],
+  shortcuts: [],
 });
 
 export function loadSave(): Save {

@@ -13,8 +13,21 @@ import { makePerson, type PersonLook } from "../scene/people";
 import { loadKayKit, wearKayKit } from "../scene/kaykitPeople";
 import { BASE, instanced, loader, model, place, seeded } from "../scene/kits";
 import { glowTexture, outside, type Area, type Blocker, type Capsule, type Spot } from "../camp/area";
-import { dressTraveler } from "../camp/dressTraveler";
-import { Pickables, type GatherSave, type ItemId } from "./gather";
+import { carryTools, dressTraveler } from "../camp/dressTraveler";
+import { Pickables, type ItemId } from "./gather";
+import type { Save } from "../save";
+
+/** What Leg 1 reads and changes in the save, and how to tell the game it changed. */
+export interface Leg1Context {
+  save: Pick<Save, "gather" | "tools" | "secrets" | "shortcuts">;
+  /** Today's date in the journal's sense (the day starts at 4 a.m.). */
+  today: string;
+  /** Something in the save changed: write it down. */
+  changed(): void;
+}
+
+/** Leg 1's secrets, in the order you'll most likely find them. */
+export const LEG1_SECRETS = ["leg1:stone", "leg1:log", "leg1:chalk"];
 
 /** The middle of Della's yard, and how far it reaches (the fence sits just outside). */
 const YARD = { x: 0, z: -1, r: 8.5 };
@@ -30,6 +43,12 @@ const SPINE: [number, number][] = [
 const LANE_R = 2.4;
 /** The clearing at the end of the leg, where you make camp. */
 const END = { x: 0, z: -49, r: 4.6 };
+/** Della's back gate: one fence section on the north-east of the yard (angle a around the yard), and which way is out. */
+const FENCE_STEP = 2.04 / FENCE_R;
+const BACK = (() => {
+  const a = FENCE_STEP / 2 + 11 * FENCE_STEP;
+  return { a, x: YARD.x + Math.sin(a) * FENCE_R, z: YARD.z + Math.cos(a) * FENCE_R, ox: Math.sin(a), oz: Math.cos(a) };
+})();
 
 /** A point along the lane: `s` meters from the gate, `off` meters to the right of the middle. */
 function lanePoint(s: number, off = 0): { x: number; z: number } {
@@ -83,6 +102,10 @@ const NOTES: Record<string, string[]> = {
     "Beyond this house, the lane is just a path.",
   ],
   well: ["The village well. Your face looks back at you from the dark water, lit by the sky."],
+  "gate:inside": [
+    "A little back gate in Della's fence. It's latched from the other side.",
+    "Still latched. The latch must be out on the far side, by the lane.",
+  ],
 };
 
 const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
@@ -202,7 +225,11 @@ async function buildCottage(opts: {
   return house;
 }
 
-export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gather: GatherSave, today: string): Area {
+export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx: Leg1Context): Area {
+  const { save, today } = ctx;
+  const gather = save.gather;
+  const has = (tool: "stick" | "lantern") => save.tools.includes(tool);
+  const found = (id: string) => save.secrets.includes(id);
   const scene = new THREE.Scene();
   const dusk = new THREE.Color("#7d6a86");
   scene.background = dusk;
@@ -231,6 +258,8 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gath
     { ax: 0, az: -8, bx: 0, bz: -11.5, r: 1.2 },
     ...SPINE.slice(0, -1).map(([ax, az], i) => ({ ax, az, bx: SPINE[i + 1][0], bz: SPINE[i + 1][1], r: LANE_R })),
     { ax: END.x, az: END.z, bx: END.x, bz: END.z, r: END.r },
+    // the little back path from the lane to Della's back gate (the first shortcut)
+    { ax: BACK.x + BACK.ox * 0.3, az: BACK.z + BACK.oz * 0.3, bx: 4.1, bz: -16.6, r: 1.0 },
   ];
   const blockers: Blocker[] = [];
   const spots: Spot[] = [];
@@ -462,7 +491,7 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gath
   scene.add(endGlow);
 
   // ---------- lantern posts along the lane ----------
-  const lanePosts: { x: number; z: number }[] = [lanePoint(8, 2.7), lanePoint(20, -2.7), lanePoint(31, 2.7), lanePoint(42, -2.7)];
+  const lanePosts: { x: number; z: number }[] = [lanePoint(8, 2.7), lanePoint(20, -2.7), lanePoint(31, 2.7), lanePoint(36.4, 2.7)];
   const postGroups: THREE.Group[] = [];
   for (const p of lanePosts) {
     const lp = new THREE.Group();
@@ -480,10 +509,147 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gath
     block(p.x, p.z, 0.22);
   }
 
+  // ---------- secrets that look a bit off ----------
+  // A paler stone with a crack around it, by the well. Tap it with the stick.
+  const STONE = lanePoint(17, -1.9);
+  const oddStone = new THREE.Group();
+  oddStone.position.set(STONE.x, 0, STONE.z);
+  const stoneBody = new THREE.Mesh(new THREE.DodecahedronGeometry(0.28, 0), flat("#b9b2a2"));
+  stoneBody.scale.set(1.2, 0.7, 1);
+  stoneBody.position.y = 0.16;
+  stoneBody.castShadow = true;
+  const crack = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.012, 3, 14), flat("#4a443c"));
+  crack.rotation.x = Math.PI / 2;
+  crack.position.y = 0.16;
+  crack.scale.set(1.15, 1, 1);
+  oddStone.add(stoneBody, crack);
+  const hollow = new THREE.Mesh(new THREE.CircleGeometry(0.22, 10), flat("#2a2018"));
+  hollow.rotation.x = -Math.PI / 2;
+  hollow.position.set(STONE.x, 0.015, STONE.z);
+  scene.add(hollow, oddStone);
+  if (found("leg1:stone")) oddStone.position.x += 0.55;
+  spots.push({ id: "secret:stone", label: "Look", x: STONE.x, z: STONE.z, range: 1.4, standX: STONE.x + 0.9, standZ: STONE.z + 0.5, tapTargets: [oddStone] });
+
+  // A hollow log in the long grass by the lane.
+  const LOG = lanePoint(30, 2.05);
+  const log = new THREE.Group();
+  log.position.set(LOG.x, 0, LOG.z);
+  log.rotation.y = 0.4;
+  const bark = flat("#6a4a2e");
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 1.4, 8, 1, true), bark);
+  trunk.rotation.z = Math.PI / 2;
+  trunk.position.y = 0.23;
+  trunk.castShadow = true;
+  const inside = new THREE.Mesh(new THREE.CircleGeometry(0.2, 8), flat("#2a1c12"));
+  inside.position.set(0.7, 0.23, 0);
+  inside.rotation.y = Math.PI / 2;
+  const ringEnd = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.25, 8), flat("#b08a5a"));
+  ringEnd.position.set(-0.7, 0.23, 0);
+  ringEnd.rotation.y = -Math.PI / 2;
+  log.add(trunk, inside, ringEnd);
+  const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 12), new THREE.MeshStandardMaterial({ color: "#c07a3a", metalness: 0.7, roughness: 0.35 }));
+  coin.position.set(0.95, 0.01, 0.1);
+  coin.visible = false;
+  log.add(coin);
+  scene.add(log);
+  block(LOG.x, LOG.z, 0.45);
+  spots.push({ id: "secret:log", label: "Look", x: LOG.x, z: LOG.z, range: 1.5, standX: LOG.x - 1.0, standZ: LOG.z + 0.3, tapTargets: [log] });
+
+  // Under the roots of a big tree near the top of the lane: too dark to see, until the lantern.
+  const CHALK = lanePoint(33, -2.3);
+  const ROOTS = lanePoint(33.4, -3.6);
+  const chalkTex = (() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const g = c.getContext("2d")!;
+    g.strokeStyle = "rgba(245,242,230,0.92)";
+    g.lineWidth = 5;
+    g.lineCap = g.lineJoin = "round";
+    // a little lantern...
+    g.strokeRect(34, 40, 32, 42);
+    g.beginPath();
+    g.moveTo(30, 40); g.lineTo(50, 24); g.lineTo(70, 40);
+    g.moveTo(50, 24); g.lineTo(50, 14);
+    g.moveTo(44, 70); g.quadraticCurveTo(50, 50, 56, 70);
+    // ...and an arrow pointing north, up the trail
+    g.moveTo(96, 96); g.lineTo(96, 34);
+    g.moveTo(84, 48); g.lineTo(96, 34); g.lineTo(108, 48);
+    g.stroke();
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const chalk = new THREE.Mesh(new THREE.PlaneGeometry(0.75, 0.75), new THREE.MeshBasicMaterial({ map: chalkTex, transparent: true, opacity: found("leg1:chalk") ? 0.9 : 0, depthWrite: false }));
+  const roots = new THREE.Group();
+  roots.position.set(ROOTS.x, 0, ROOTS.z);
+  const face = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.5), flat("#5a544c"));
+  face.position.y = 0.55;
+  face.castShadow = face.receiveShadow = true;
+  roots.add(face);
+  for (let i = 0; i < 5; i++) {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.08, 1.4, 5), bark);
+    r.position.set(-0.7 + i * 0.35, 1.05, 0.15);
+    r.rotation.z = (i - 2) * 0.35;
+    r.rotation.x = 0.5;
+    roots.add(r);
+  }
+  // the face looks toward the lane
+  const toLane = Math.atan2(CHALK.x - ROOTS.x, CHALK.z - ROOTS.z);
+  roots.rotation.y = toLane;
+  chalk.position.set(0, 0.6, 0.26);
+  roots.add(chalk);
+  scene.add(roots);
+  block(ROOTS.x, ROOTS.z, 0.7);
+  spots.push({ id: "secret:chalk", label: "Look", x: CHALK.x, z: CHALK.z, range: 1.5, standX: CHALK.x + (CHALK.x - ROOTS.x) * 0.6, standZ: CHALK.z + (CHALK.z - ROOTS.z) * 0.6, tapTargets: [roots] });
+
+  // ---------- Della's back gate: latched from the lane side (the first shortcut) ----------
+  const gateOpen = () => save.shortcuts.includes("leg1:gate");
+  const backGate = new THREE.Group();
+  // hinged at one end of the gap in the fence
+  const tx = Math.cos(BACK.a), tz = -Math.sin(BACK.a); // along the fence
+  backGate.position.set(BACK.x - tx * 0.95, 0, BACK.z - tz * 0.95);
+  const leaf = new THREE.Mesh(new THREE.BoxGeometry(1.85, 0.75, 0.06), plank);
+  leaf.geometry.translate(0.93, 0.45, 0);
+  leaf.castShadow = true;
+  const latch = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.1), flat("#3b3631"));
+  latch.position.set(1.75, 0.6, 0.06);
+  backGate.add(leaf, latch);
+  scene.add(backGate);
+  for (const k of [-1, 1]) {
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.0, 0.12), plank);
+    post.position.set(BACK.x + tx * 0.98 * k, 0.5, BACK.z + tz * 0.98 * k);
+    scene.add(post);
+  }
+  const closedRy = BACK.a, openRy = BACK.a - 1.7;
+  backGate.rotation.y = gateOpen() ? openRy : closedRy;
+  const gateBlock: Blocker = { x: BACK.x, z: BACK.z, r: 0.8 };
+  const gateSpots: Spot[] = [
+    { id: "gate:inside", label: "Look", x: BACK.x - BACK.ox * 0.6, z: BACK.z - BACK.oz * 0.6, range: 1.4, standX: BACK.x - BACK.ox * 1.3, standZ: BACK.z - BACK.oz * 1.3, tapTargets: [backGate] },
+    { id: "gate:outside", label: "Unlatch", x: BACK.x + BACK.ox * 0.6, z: BACK.z + BACK.oz * 0.6, range: 1.4, standX: BACK.x + BACK.ox * 1.3, standZ: BACK.z + BACK.oz * 1.3, tapTargets: [] },
+  ];
+  if (!gateOpen()) {
+    blockers.push(gateBlock);
+    spots.push(...gateSpots);
+  }
+  let gateSwing = 0; // 0 → 1 while it swings open
+
   // ---------- the traveler ----------
   const traveler = makePerson(look);
   scene.add(traveler.root);
   const frameHooks: ((dt: number) => void)[] = [];
+  const tools = carryTools(traveler);
+  tools.set(save.tools);
+  frameHooks.push((dt) => tools.update(dt));
+
+  /** Secret found: write it down, and say how many of Leg 1's you have. */
+  const findSecret = (id: string, text: string) => {
+    if (!save.secrets.includes(id)) save.secrets.push(id);
+    ctx.changed();
+    const n = LEG1_SECRETS.filter(found).length;
+    return `${text} (Secret found: ${n} of ${LEG1_SECRETS.length} in Leg 1)`;
+  };
+  let stoneRoll = 0; // 0 → 1 while the stone rolls aside
+  let chalkShow = 0; // 0 → 1 while the chalk mark appears
 
   // ---------- things to pick ----------
   const pickables = new Pickables(spots, gather, today);
@@ -540,8 +706,9 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gath
     const kit = new THREE.Group();
 
     // the yard fence: a ring of pickets, open at the garden gate (north) and the way back (south)
-    const step = 2.04 / FENCE_R;
+    const step = FENCE_STEP;
     for (let a = step / 2; a < Math.PI * 2; a += step) {
+      if (Math.abs(a - BACK.a) < 0.01) continue; // the back gate goes here
       const x = YARD.x + Math.sin(a) * FENCE_R, z = YARD.z + Math.cos(a) * FENCE_R;
       if (x < COTTAGE.x + COTTAGE.w / 2 + 0.3) continue; // the cottage is the fence on that side
       if (Math.abs(x) < 1.6) continue; // gaps north (gate) and south (the way back to camp)
@@ -604,10 +771,10 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gath
       pick("leg1:chamomile:1", "chamomile", lanePoint(3, -1.9).x, lanePoint(3, -1.9).z),
       pick("leg1:chamomile:2", "chamomile", lanePoint(13, 1.9).x, lanePoint(13, 1.9).z),
       pick("leg1:chamomile:3", "chamomile", lanePoint(27, 1.9).x, lanePoint(27, 1.9).z),
-      pick("leg1:chamomile:4", "chamomile", lanePoint(39, -1.9).x, lanePoint(39, -1.9).z),
+      pick("leg1:chamomile:4", "chamomile", lanePoint(34.5, 1.9).x, lanePoint(34.5, 1.9).z),
       pick("leg1:mushroom:1", "mushroom", lanePoint(10, -2.0).x, lanePoint(10, -2.0).z),
       pick("leg1:mushroom:2", "mushroom", lanePoint(22, 2.0).x, lanePoint(22, 2.0).z),
-      pick("leg1:mushroom:3", "mushroom", lanePoint(34, -2.0).x, lanePoint(34, -2.0).z),
+      pick("leg1:mushroom:3", "mushroom", lanePoint(28.5, -2.0).x, lanePoint(28.5, -2.0).z),
     ]);
 
     // ---------- nature ----------
@@ -704,7 +871,73 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, gath
     notes: NOTES,
     ready,
     pick: (spot, toward) => pickables.pick(spot, toward),
+    use(spot) {
+      switch (spot.id) {
+        case "appletree": {
+          if (!has("stick") || gather.picked["leg1:knock"] === today) return null;
+          gather.picked["leg1:knock"] = today;
+          ctx.changed();
+          [[-0.9, 0.7], [0.6, 1.0], [1.1, -0.5]].forEach(([dx, dz], i) =>
+            void pickables.add(`leg1:apple:k${i + 1}`, "apple", TREE.x + dx, TREE.z + dz, 0, undefined, 3 + i * 0.4),
+          );
+          return "You reach up with the walking stick and tap the lowest branch. Thump, thump, thump: three apples drop into the grass.";
+        }
+        case "secret:stone":
+          if (found("leg1:stone")) return "The pale stone sits where you rolled it. Just a stone now, and a dry little hollow.";
+          if (!has("stick")) return "This stone looks a little off: paler than the rest, with a crack all the way around. Hollow, maybe? You'd need something to tap it with.";
+          stoneRoll = 0.001;
+          return findSecret("leg1:stone", "Tok, tok. Hollow! The stone rolls aside, and in the hollow underneath, pressed flat in a twist of paper, is a four-leaf clover.");
+        case "secret:log":
+          if (found("leg1:log")) return "The hollow log. You give it a friendly tap. Nothing rattles now.";
+          if (!has("stick")) return "An old log, hollow at one end. Something about it makes you want to give it a knock.";
+          coin.visible = true;
+          return findSecret("leg1:log", "Tok, tok, rattle. An old copper coin rolls out of the log, stamped with a little fox.");
+        case "secret:chalk":
+          if (found("leg1:chalk")) return "Della's chalk mark: a little lantern, and an arrow pointing north up the trail.";
+          if (!has("lantern")) return "It's too dark under these roots to see anything. There might be something there.";
+          chalkShow = 0.001;
+          return findSecret("leg1:chalk", "You hold the lantern close. There, in chalk: a little lantern and an arrow pointing north. Della's mark! She walked this way once.");
+        case "gate:outside":
+          if (!save.shortcuts.includes("leg1:gate")) save.shortcuts.push("leg1:gate");
+          ctx.changed();
+          blockers.splice(blockers.indexOf(gateBlock), 1);
+          for (const g of gateSpots) if (spots.includes(g)) spots.splice(spots.indexOf(g), 1);
+          gateSwing = 0.001;
+          return "You lift the latch and Della's back gate swings open. A shortcut from the lane straight into her yard.";
+      }
+      return null;
+    },
+    interest(x, z) {
+      // the fox only notices the odd stone and the hollow log (the chalk needs the lantern)
+      for (const [id, at] of [["leg1:stone", STONE], ["leg1:log", LOG]] as const) {
+        if (!found(id) && Math.hypot(at.x - x, at.z - z) < 6) return at;
+      }
+      return null;
+    },
+    refresh() {
+      tools.set(save.tools);
+    },
     update(dt, time) {
+      // labels follow what you can do now
+      const appleSpot = spots.find((s) => s.id === "appletree");
+      if (appleSpot) appleSpot.label = has("stick") && gather.picked["leg1:knock"] !== today ? "Knock" : "Look";
+      for (const s of spots) {
+        if (s.id === "secret:stone" || s.id === "secret:log") s.label = has("stick") && !found(s.id.replace("secret:", "leg1:")) ? "Tap" : "Look";
+        if (s.id === "secret:chalk") s.label = has("lantern") && !found("leg1:chalk") ? "Shine" : "Look";
+      }
+      if (stoneRoll > 0 && stoneRoll < 1) {
+        stoneRoll = Math.min(1, stoneRoll + dt * 1.5);
+        oddStone.position.x = STONE.x + stoneRoll * 0.55;
+        stoneBody.rotation.z = -stoneRoll * Math.PI;
+      }
+      if (chalkShow > 0 && chalkShow < 1) {
+        chalkShow = Math.min(1, chalkShow + dt * 0.7);
+        (chalk.material as THREE.MeshBasicMaterial).opacity = chalkShow * 0.9;
+      }
+      if (gateSwing > 0 && gateSwing < 1) {
+        gateSwing = Math.min(1, gateSwing + dt * 1.2);
+        backGate.rotation.y = closedRy + (openRy - closedRy) * (1 - Math.pow(1 - gateSwing, 3));
+      }
       const flicker = Math.sin(time * 9) * 0.4 + Math.sin(time * 15.3) * 0.3 + Math.sin(time * 4.1) * 0.3;
       lanternLight.intensity = 9 + flicker * 1.5;
       for (const g of glows) g.material.opacity = 0.75 + flicker * 0.06;

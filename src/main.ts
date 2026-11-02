@@ -16,7 +16,8 @@ import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
 import { Sync } from "./journal/sync";
-import { campHint, chapterCard, creationScreen, say, skipButton, storybook, titleScreen } from "./ui/screens";
+import { campHint, chapterCard, creationScreen, pickKeepsake, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
+import { doodleArt } from "./journal/doodles";
 import { startCamp, type CampSession } from "./camp/play";
 import { createCamp } from "./camp/camp";
 import { createLeg1 } from "./trail/leg1";
@@ -85,6 +86,7 @@ const journal = mountSatchel({
   },
   onChange: () => sync.schedule(),
   gathered: () => ITEMS.map((i) => ({ id: i.id, name: i.name, count: save.gather.gathered[i.id] ?? 0, about: i.about, where: i.where })),
+  firstLine: () => save.firstLine || null,
   onRested: () => camp?.note("You bank the fire and crawl into your tent. The day is written down. Goodnight."),
 });
 // The online backup (only does anything once you've signed in from the journal).
@@ -98,6 +100,11 @@ const sync = new Sync(journal, {
       gather: save.gather,
       legsDone: save.legsDone,
       legsSeen: save.legsSeen,
+      tools: save.tools,
+      keepsake: save.keepsake,
+      firstLine: save.firstLine,
+      secrets: save.secrets,
+      shortcuts: save.shortcuts,
     },
     updated: save.updated ?? 0,
   }),
@@ -367,6 +374,61 @@ function bumpSatchel() {
   b?.classList.add("bump");
 }
 
+/** The save changed out on the trail: write it down, and back it up. */
+function saveChanged() {
+  writeSave(save);
+  sync.schedule();
+}
+
+const KEEPSAKES = [
+  { id: "candle", name: "Candle lantern", line: "Her little one, for the dark bits.", art: doodleArt("lantern") },
+  { id: "flower", name: "Pressed meadowflower", line: "From the meadow behind her cottage.", art: doodleArt("flower") },
+  {
+    id: "spoon",
+    name: "Wooden spoon",
+    line: "Worn smooth from a hundred soups.",
+    art: '<ellipse cx="10" cy="9" rx="5" ry="6.5" transform="rotate(-35 10 9)"/><path d="M13.5 13.5L27 28"/>',
+  },
+];
+
+/**
+ * The first time you talk to Della in Leg 1, she hands over the walking stick
+ * and the lantern for real, lets you take one keepsake, and gives you the
+ * journal's first page to write a line to your future self.
+ */
+let giving = false;
+async function dellaGifts() {
+  if (giving) return;
+  giving = true;
+  const name = save.traveler?.name ?? "traveler";
+  camp?.setPaused(true);
+  try {
+    await say("Della", `There you are, ${name}. Before you go, these are yours, properly now.`);
+    await say("Della", "My lantern. It lights what the dark hides. Chalk marks too, if you know where to look.");
+    await say("Della", "And the walking stick. Tap things with it. Half of this valley is hollower than it looks.");
+    await say("Della", "Now, take one thing off my table. Something to remember Lowmeadow by.");
+    const keepsake = await pickKeepsake(KEEPSAKES);
+    save.tools = ["stick", "lantern"];
+    save.keepsake = keepsake as "candle" | "flower" | "spoon";
+    saveChanged();
+    camp?.refresh();
+    await say("Della", "Good choice. And the journal: write something on the first page, for the you who reaches the Summit.");
+    const line = await writeFirstLine(name, [
+      "Remember the hens. Remember Della.",
+      "You did it one day at a time.",
+      "I hope you're proud of us.",
+    ]);
+    save.firstLine = line;
+    saveChanged();
+    journal.refresh();
+    await say("Della", line ? "There. Now off you go. I'll keep the lantern lit." : "Write it when you're ready. Off you go, I'll keep the lantern lit.");
+  } finally {
+    giving = false;
+    updatePause();
+  }
+  camp?.note("You have the walking stick and the lantern. Tap odd-looking things with the stick, and shine the lantern into dark places.");
+}
+
 async function goToCamp(firstTime: boolean) {
   await enter("camp", { firstTime });
 }
@@ -392,12 +454,19 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
     renderer: world.renderer,
     canvas,
     look: lookFor(t),
-    build: where === "camp" ? createCamp : (r, look) => createLeg1(r, look, save.gather, today),
+    build: where === "camp" ? (r, look) => createCamp(r, look, save) : (r, look) => createLeg1(r, look, { save, today, changed: saveChanged }),
     startAt: opts.startAt,
     onFirstMove: () => hint?.(),
     tick: () => audio.tick(),
     onRest: () => journal.open("rest"),
     onExit: (id) => void leave(id),
+    onUse: (spot) => {
+      if (spot.id === "della" && !save.tools.includes("stick")) {
+        void dellaGifts();
+        return "";
+      }
+      return null;
+    },
     onGather: (spot) => {
       const id = spot.gather as ItemId;
       // a pick on a new morning still counts for today, whenever you set out
