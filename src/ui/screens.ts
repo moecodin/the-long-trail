@@ -261,6 +261,25 @@ export function writeFirstLine(name: string, suggestions: string[]): Promise<str
   });
 }
 
+// ---------- a new trail card ----------
+
+/** "New trail card!": the card itself, big, with a line under it. Tap to put it in the satchel. */
+export async function cardFound(kicker: string, cardHtml: string, line: string): Promise<void> {
+  const node = el(
+    "div",
+    "overlay card-found",
+    `<p class="kicker">${escapeHtml(kicker)}</p>
+     <div class="card-found-card">${cardHtml}</div>
+     <p class="card-found-line">${escapeHtml(line)}</p>
+     <p class="muted">Tap to put it in your satchel</p>`,
+  );
+  node.addEventListener("pointerup", (e) => e.stopPropagation());
+  show(node);
+  await new Promise((r) => setTimeout(r, 600));
+  await tapOn(node);
+  await hide(node, 400);
+}
+
 // ---------- end card ----------
 
 /** A short title card between scenes, like a page in a storybook. Tap or wait to go on. */

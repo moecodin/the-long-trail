@@ -29,6 +29,10 @@ const D: Record<string, string> = {
   spoon: `<ellipse cx="10" cy="9" rx="5" ry="6.5" transform="rotate(-35 10 9)"/><path d="M13.5 13.5L27 28"/>`,
   map: `<path d="M4 8l7-3 10 3 7-3v19l-7 3-10-3-7 3Z"/><path d="M11 5v19M21 8v19"/><path d="M7 18c3-1 4-5 8-4s5 4 9 1" stroke-dasharray="1.5 2"/>`,
   gate: `<path d="M5 29V6M27 29V6M5 11h22M5 23h22M9 11v12M14 11v12M18 11v12M23 11v12"/>`,
+  letter: `<path d="M4 9h24v15H4Z"/><path d="M4 9l12 9 12-9"/><circle cx="22" cy="20" r="2.2"/>`,
+  tin: `<ellipse cx="16" cy="13" rx="12" ry="4"/><path d="M4 13l2.5 9c1 2 5 3 9.5 3s8.5-1 9.5-3L28 13"/><path d="M9 14.5l1.5 7M16 15v8M23 14.5l-1.5 7" stroke-width="1"/>`,
+  specs: `<circle cx="9.5" cy="17" r="5"/><circle cx="22.5" cy="17" r="5"/><path d="M14.5 16c1-1.5 2-1.5 3 0M4.5 15.5L2 11M27.5 15.5L30 11"/>`,
+  thimble: `<path d="M10 27V14a6 6 0 0 1 12 0v13Z"/><path d="M8 27h16"/><path d="M13 13h.1M16 12h.1M19 13h.1M13 17h.1M16 16h.1M19 17h.1M13 21h.1M16 20h.1M19 21h.1" stroke-width="2"/><path d="M22 18c3 0 4 2 3 4s-3 2-3 2" stroke-width="1.4"/>`,
   feather: `<path d="M8 28C9 16 15 7 26 4c-1 11-8 18-18 24Z"/><path d="M8 28L20 12M13 19h5M16 15h4"/>`,
 };
 
@@ -110,6 +114,46 @@ export const CARD_ART: Record<string, string> = {
     <path d="M22 23.5c1-1 3-1 4 0M34 25c1-1 3-1 4 0M28 22c1-1 3-1 4 0M40 22.5c1-1 3-1 4 0M17 24.5c1-1 2-1 3 0" stroke="#f0d9b0" stroke-width="1.4"/>
     <path d="M46 14c4-2 7 0 8 4-3 2-7 1-8-4Z" fill="#c9374a"/><path d="M46 14c-1-2-2-3-4-3" stroke="#4f7a36" stroke-width="2"/>
     <path d="M26 16c-2-3 2-4 0-8M34 16c-2-3 2-4 0-8" stroke-width="1.3"/>
+  </g>`,
+  bread: `<g ${INK}>
+    <path d="M47 30l14-6" stroke-width="4"/><path d="M47 30l14-6" stroke="#6b4a2a" stroke-width="2"/>
+    <ellipse cx="29" cy="31" rx="20" ry="10" fill="#4a4440"/>
+    <ellipse cx="22" cy="28" rx="9" ry="5" fill="#e3b46a"/>
+    <ellipse cx="35" cy="29" rx="9" ry="5" fill="#d9a352"/>
+    <path d="M18 27h.1M25 28h.1M33 28h.1M38 29h.1" stroke="#5c8a3e" stroke-width="2.6"/>
+    <path d="M10 14c3-3 6-3 7 0M14 10v8" stroke="#5c8a3e" stroke-width="1.6"/>
+    <path d="M26 16c-2-3 2-4 0-8M34 16c-2-3 2-4 0-8" stroke-width="1.3"/>
+  </g>`,
+  hens: `<g ${INK}>
+    <path d="M6 42h52" stroke="#7a9a4a" stroke-width="2"/>
+    <path d="M12 40c-3-8 2-14 9-14 2-4 6-4 6 0 3 2 3 6 1 8l-2 6Z" fill="#f2ead8"/>
+    <path d="M24 22c1-2 2-2 3 0" stroke="#c9374a" stroke-width="2.4"/><path d="M28 27l3 1-3 1" fill="#e3a83a"/>
+    <path d="M27 40c-3-7 1-12 7-12 2-3 5-3 5 0 3 2 3 5 1 7l-2 5Z" fill="#b5652e"/>
+    <path d="M36 25c1-2 2-2 3 0" stroke="#c9374a" stroke-width="2.4"/><path d="M40 29l3 1-3 1" fill="#e3a83a"/>
+    <path d="M42 40c-2-6 1-10 6-10 2-3 5-3 5 0 2 2 2 5 0 6l-1 4Z" fill="#3a302a"/>
+    <path d="M49 27c1-2 2-2 3 0" stroke="#c9374a" stroke-width="2.4"/>
+    <ellipse cx="55" cy="40" rx="2.5" ry="3.2" fill="#e8cfa8"/>
+  </g>`,
+  neighbors: `<g ${INK}>
+    <path d="M4 42h56" stroke="#8a6a48" stroke-width="2"/>
+    <path d="M7 42V28l7-7 7 7v14Z" fill="#c9a26b"/><path d="M5 29l9-9 9 9" fill="#a8522f"/>
+    <path d="M12 42v-6h4v6" fill="#6b4a2a"/>
+    <path d="M25 42V26l7-8 7 8v16Z" fill="#e8dcc0"/><path d="M23 27l9-10 9 10" fill="#8e3b2a"/>
+    <path d="M30 42v-7h4v7" fill="#6b4a2a"/><path d="M28 29h3v3h-3Z" fill="#f6d34c"/>
+    <path d="M43 42V29l7-7 7 7v13Z" fill="#b39070"/><path d="M41 30l9-9 9 9" fill="#a8522f"/>
+    <path d="M48 42v-6h4v6" fill="#6b4a2a"/>
+    <path d="M18 14c2-2 4 0 6-1M36 10c2-2 4 0 6-1" stroke-width="1.2"/>
+  </g>`,
+  cottage: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#5b4a6e" stroke="none"/>
+    <circle cx="52" cy="10" r="4" fill="#fbf0c8" stroke="none"/>
+    <path d="M0 40h64v8H0Z" fill="#4f6b38"/>
+    <path d="M14 40V24h30v16Z" fill="#e8dcc0"/>
+    <path d="M10 25l19-14 19 14Z" fill="#a8522f"/>
+    <path d="M37 15v-6h4v9" fill="#8a6a48"/>
+    <path d="M18 29h7v6h-7Z" fill="#ffcf6a"/><path d="M21.5 29v6M18 32h7" stroke-width="1"/>
+    <path d="M31 40v-9h6v9" fill="#6b4a2a"/>
+    <circle cx="21.5" cy="32" r="7" fill="#ffd77a" stroke="none" opacity="0.25"/>
   </g>`,
 };
 

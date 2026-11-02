@@ -16,8 +16,10 @@ import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
 import { Sync } from "./journal/sync";
-import { campHint, chapterCard, creationScreen, pickKeepsake, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
+import { campHint, cardFound, chapterCard, creationScreen, pickKeepsake, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
 import { doodleArt } from "./journal/doodles";
+import { RECIPES, TRAIL_CARDS, useFoundRecipes } from "./journal/recipes";
+import { trailCard } from "./journal/cards";
 import { startCamp, type CampSession } from "./camp/play";
 import { createCamp } from "./camp/camp";
 import { createLeg1 } from "./trail/leg1";
@@ -36,6 +38,7 @@ const MUSIC_LOOP_SECONDS = (10 * 8 * 60) / 90;
 const REPLAY_KEY = "longtrail.replay";
 const CHANGE_KEY = "longtrail.change-traveler";
 const save = loadSave();
+useFoundRecipes(() => save.recipes);
 const audio = new AudioManager(save.muted);
 const director = new Director();
 
@@ -108,6 +111,10 @@ const sync = new Sync(journal, {
       firstLine: save.firstLine,
       secrets: save.secrets,
       shortcuts: save.shortcuts,
+      talks: save.talks,
+      recipes: save.recipes,
+      cards: save.cards,
+      quests: save.quests,
     },
     updated: save.updated ?? 0,
   }),
@@ -387,10 +394,59 @@ function bumpSatchel() {
   b?.classList.add("bump");
 }
 
-/** The save changed out on the trail: write it down, and back it up. */
+/** The save changed out on the trail: write it down, back it up, and see if that found anything. */
 function saveChanged() {
   writeSave(save);
   sync.schedule();
+  satchel.refresh();
+  void checkFinds();
+}
+
+/** When each place and critter card is earned. */
+const CARD_EARNED: Record<string, () => boolean> = {
+  hens: () => (save.gather.gathered.egg ?? 0) >= 3,
+  neighbors: () => ["goodbye:tin", "goodbye:specs", "goodbye:letter"].every((q) => save.quests.includes(q)),
+  cottage: () => save.legsDone.includes(1),
+};
+
+/**
+ * Found recipes (gather all of a recipe's herbs) and earned cards: each one
+ * shows the card big for a moment, then it's in the satchel's album.
+ */
+let showingFinds = false;
+async function checkFinds() {
+  if (showingFinds || !camp) return;
+  const news: { kicker: string; html: string; line: string }[] = [];
+  for (const r of RECIPES) {
+    if (!r.found || save.recipes.includes(r.id)) continue;
+    if (r.found.herbs.every((h) => (save.gather.gathered[h as ItemId] ?? 0) > 0)) {
+      save.recipes.push(r.id);
+      news.push({ kicker: "Found a recipe!", html: trailCard(r, { big: true, still: true }), line: r.found.note });
+    }
+  }
+  for (const c of TRAIL_CARDS) {
+    if (save.cards.includes(c.id) || !CARD_EARNED[c.id]?.()) continue;
+    save.cards.push(c.id);
+    news.push({ kicker: "New trail card!", html: trailCard(c, { big: true, still: true }), line: c.how });
+  }
+  if (!news.length) return;
+  writeSave(save);
+  sync.schedule();
+  journal.refresh();
+  satchel.refresh();
+  showingFinds = true;
+  camp.setPaused(true);
+  try {
+    // let the note about what you just did show first
+    await new Promise((r) => setTimeout(r, 1400));
+    for (const n of news) {
+      bumpSatchel();
+      await cardFound(n.kicker, n.html, n.line);
+    }
+  } finally {
+    showingFinds = false;
+    updatePause();
+  }
 }
 
 /** The traveler's own lines in a conversation. */
@@ -452,6 +508,7 @@ const DELLA_TIPS = [
   "Fill your satchel before you go. The herb bed's full and the hens have been busy.",
   "Pick what you like. It all grows back by morning, same as always.",
   "Follow the lane past the Tansys' and the Millers'. The trail starts where the houses stop.",
+  "Say a proper goodbye to the neighbors before you go. And take Mrs. Tansy her pie tin, it's on my step.",
 ];
 let dellaTip = 0;
 
@@ -533,6 +590,8 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
       sync.schedule();
       bumpSatchel();
       audio.tick();
+      satchel.refresh();
+      void checkFinds();
       return pickNote(id, n);
     },
   });
@@ -545,6 +604,7 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
   // a beat for the first frame to draw before the fade lifts
   await new Promise((r) => setTimeout(r, 300));
   fadeBlack(false);
+  void checkFinds();
   if (where === "camp") {
     hint = campHint(!!opts.firstTime);
     setTimeout(() => journal.greetNewDay(), 1200);
