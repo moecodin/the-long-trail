@@ -53,7 +53,7 @@ import { cardArt, dayDoodle, doodle, moodDoodle } from "./doodles";
 import { KIND_LABEL, WAITING, knownRecipes, recipe, type CardKind, type Recipe } from "./recipes";
 import "./journal.css";
 
-export type JournalPage = "today" | "log" | "meals" | "cards" | "trends" | "scale" | "setup";
+export type JournalPage = "today" | "log" | "meals" | "cards" | "gathered" | "trends" | "scale" | "setup";
 type Screen = JournalPage | "welcome" | "rest" | "yesterday" | "recipe";
 
 export interface JournalOptions {
@@ -66,6 +66,17 @@ export interface JournalOptions {
   onRested?(): void;
   /** Called after every change, so it can be synced. */
   onChange?(d: JournalData): void;
+  /** Everything you can gather on the trail, and how many of each you've picked (the game keeps these). */
+  gathered?(): GatheredItem[];
+}
+
+/** One kind of thing you can pick on the trail, for the Gathered page. */
+export interface GatheredItem {
+  id: string;
+  name: string;
+  count: number;
+  about: string;
+  where: string;
 }
 
 const TABS: { id: JournalPage; label: string }[] = [
@@ -73,6 +84,7 @@ const TABS: { id: JournalPage; label: string }[] = [
   { id: "log", label: "Log" },
   { id: "meals", label: "Meals" },
   { id: "cards", label: "Cards" },
+  { id: "gathered", label: "Gather" },
   { id: "trends", label: "Trends" },
   { id: "scale", label: "Scale" },
   { id: "setup", label: "Setup" },
@@ -134,6 +146,8 @@ export class Journal {
   private recipeBack: "meals" | "cards" = "cards";
   /** The card picked in the album (a recipe id, or "waiting-N"). */
   private cardPick = "";
+  /** The thing picked on the Gathered page. */
+  private itemPick = "";
   /** Each day's stamp as last drawn, so a newly inked stamp can thump down. */
   private stampsDrawn = new Map<string, string>();
 
@@ -259,6 +273,8 @@ export class Journal {
         return this.mealsPages();
       case "cards":
         return this.cardsPages();
+      case "gathered":
+        return this.gatheredPages();
       case "recipe":
         return this.recipePages();
       case "trends":
@@ -559,6 +575,37 @@ export class Journal {
        <p class="j-date">${known.length} found so far. Tap one to look closer</p>
        <div class="tc-grid">${grid}</div>`,
       right,
+    ];
+  }
+
+  // ---------- gathered ----------
+
+  private gatheredPages(): [string, string] {
+    const items = this.opts.gathered?.() ?? [];
+    const found = items.filter((i) => i.count > 0);
+    if (!items.some((i) => i.id === this.itemPick)) this.itemPick = (found[0] ?? items[0])?.id ?? "";
+    const it = items.find((i) => i.id === this.itemPick);
+    const total = found.reduce((n, i) => n + i.count, 0);
+    return [
+      `<h2>Gathered</h2>
+       <p class="j-date">${found.length ? `${total} picked on the trail so far` : "Nothing picked yet. Look for a sparkle on the trail"}</p>
+       <ul class="j-gathered">${items
+         .map(
+           (i) => `<li><button class="j-item${i.count ? "" : " j-unfound"}" data-act="pick-item" data-id="${i.id}" aria-pressed="${i.id === this.itemPick}">
+             <span class="j-gi">${doodle(i.id === "chamomile" ? "flower" : i.id, "j-gdoodle")}${i.count ? esc(i.name) : "Not found yet"}</span>
+             <span class="hand">${i.count ? `× ${i.count}` : ""}</span></button></li>`,
+         )
+         .join("")}</ul>`,
+      it
+        ? `<div class="j-gshow">${doodle(it.id === "chamomile" ? "flower" : it.id, "j-gbig")}
+             <div class="tc-about">
+               <h2>${it.count ? esc(it.name) : "Still out there"}</h2>
+               <p class="j-date">${esc(it.where)}</p>
+               ${it.count ? `<p class="hand">${it.count} in your satchel</p>` : ""}
+             </div></div>
+           ${it.count ? `<p class="j-note">${esc(it.about)}</p>` : `<p class="j-note j-faint">Something grows ${esc(it.where.toLowerCase())}. Walk up to the sparkle and tap Pick.</p>`}
+           <p class="j-small j-faint">Everything you pick grows back the next morning. Some recipes need these, so keep an eye out.</p>`
+        : "",
     ];
   }
 
@@ -1054,6 +1101,9 @@ export class Journal {
       }
       case "pick-card":
         this.cardPick = id;
+        return this.render();
+      case "pick-item":
+        this.itemPick = id;
         return this.render();
       case "open-recipe":
         this.recipeId = id;

@@ -155,6 +155,9 @@ export function wearKayKit(
   let bones: ReturnType<typeof bonesOf> | null = null;
   let sit = 0;
   let walkAmount = 0;
+  /** A one-off move (picking something up), blended over the walk and idle. */
+  let move: THREE.AnimationAction | null = null;
+  let moveLeft = 0;
 
   const dress = (key: CastKey) => {
     const cast = CAST[key];
@@ -181,6 +184,8 @@ export function wearKayKit(
     walk = mixer.clipAction(clip("Walking_A"));
     run = mixer.clipAction(clip("Running_A"));
     run.weight = 0;
+    move = null;
+    moveLeft = 0;
     idle.play();
     walk.play();
     run.play();
@@ -211,6 +216,18 @@ export function wearKayKit(
     pace = speed;
   };
 
+  person.gesture = (name) => {
+    if (!mixer) return;
+    move?.stop();
+    const clip = loaded.clips.find((c) => c.name === name);
+    if (!clip) return;
+    move = mixer.clipAction(clip);
+    move.setLoop(THREE.LoopOnce, 1);
+    move.clampWhenFinished = true;
+    move.reset().play();
+    moveLeft = clip.duration;
+  };
+
   return (dt: number) => {
     if (!mixer || !bones || !idle || !walk || !run || !person.root.visible) return;
     if (pace < 0) {
@@ -228,6 +245,20 @@ export function wearKayKit(
       run.weight = r;
       const natural = THREE.MathUtils.lerp(WALK_SPEED, RUN_SPEED, r);
       walk.timeScale = run.timeScale = pace > 0.05 ? THREE.MathUtils.clamp(pace / natural, 0.7, 1.4) : 1;
+    }
+    if (move) {
+      // ease the move in and out over a fifth of a second at each end
+      const total = move.getClip().duration;
+      const k = Math.min(1, (total - moveLeft) / 0.2, moveLeft / 0.2);
+      move.weight = Math.max(0, k);
+      idle.weight *= 1 - move.weight;
+      walk.weight *= 1 - move.weight;
+      run.weight *= 1 - move.weight;
+      moveLeft -= dt;
+      if (moveLeft <= 0) {
+        move.stop();
+        move = null;
+      }
     }
     mixer.update(dt);
 

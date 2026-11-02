@@ -24,6 +24,9 @@ const KITS = {
       "Roof_RoundTiles_8x8", "Prop_Chimney", "WindowShutters_Wide_Round_Open",
       // camp
       "Prop_WoodenFence_Single", "Prop_Wagon",
+      // Leg 1: Lowmeadow cottages along the lane
+      "Wall_UnevenBrick_Straight", "Wall_UnevenBrick_Window_Wide_Round", "Wall_UnevenBrick_Door_Round",
+      "Roof_RoundTiles_6x6", "Prop_Vine2", "Prop_WoodenFence_Extension1",
     ],
   },
   props: {
@@ -34,6 +37,8 @@ const KITS = {
       "Bucket_Wooden_1",
       // camp
       "Lantern_Wall", "Crate_Wooden", "Bench", "Rope_1", "Cauldron", "Banner_1",
+      // Leg 1
+      "FarmCrate_Empty", "Barrel_Apples",
     ],
     // textures used on their own, for the armchair built in kits.ts
     extraImages: ["T_Trim_Cloth_BaseColor.png"],
@@ -49,6 +54,8 @@ const KITS = {
       "CommonTree_5", "Pine_4", "Pine_5", "Fern_1", "Plant_1_Big", "Mushroom_Common", "Clover_1",
       "Grass_Common_Short", "Pebble_Round_1", "Pebble_Round_3", "RockPath_Round_Small_1",
       "RockPath_Round_Small_2", "RockPath_Round_Thin", "Flower_3_Single",
+      // Leg 1: things to gather (thyme, chives, sage, chamomile) and the verges
+      "Plant_7", "Plant_7_Big", "Grass_Wispy_Short", "Plant_1", "Flower_4_Single", "Clover_2",
     ],
   },
 };

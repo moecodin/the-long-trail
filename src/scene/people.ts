@@ -33,6 +33,8 @@ export interface Person {
    * 0 stands still; above about 1.4 m/s the walk turns into a jog.
    */
   setPace(speed: number, dt: number): void;
+  /** Play a short move once, like bending to pick something up (needs the character model). */
+  gesture(name: "PickUp" | "Interact"): void;
 }
 
 const mat = (color: string) => new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.9 });
@@ -174,6 +176,9 @@ export function makePerson(look: PersonLook, height = 1): Person {
     setPace(speed, dt) {
       pacePhase += speed * dt * 4.5;
       walkPose(pacePhase, Math.min(1, speed / 1.2));
+    },
+    gesture() {
+      // the simple stand-in body has no moves of its own; the KayKit body does
     },
   };
   return person;

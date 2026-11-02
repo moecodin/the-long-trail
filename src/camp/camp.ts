@@ -10,68 +10,39 @@
 
 import * as THREE from "three";
 import { makePerson, type PersonLook } from "../scene/people";
-import { loadKayKit, wearKayKit } from "../scene/kaykitPeople";
-import { loadSatchel, wearSatchel } from "../scene/satchel";
-import { BASE, instanced, loader, model, place, seeded } from "../scene/kits";
+import { instanced, model, place, seeded } from "../scene/kits";
+import { dressTraveler } from "./dressTraveler";
+import { glowTexture, type Area, type Blocker, type Spot } from "./area";
 
-/** Round things you can't walk through: x, z and radius in meters. */
-export interface Blocker {
-  x: number;
-  z: number;
-  r: number;
-}
+export type { Blocker, Spot } from "./area";
 
-/** Something you can walk up to and use with the action button. */
-export interface Spot {
-  id: string;
-  /** The action button's label, like "Look" or "Sit". */
-  label: string;
-  /** Where the thing is. */
-  x: number;
-  z: number;
-  /** How close you need to be for the button to show. */
-  range: number;
-  /** Where to stand when you tap the thing from far away. */
-  standX: number;
-  standZ: number;
-  /** Meshes you can tap on to walk over to this thing. */
-  tapTargets: THREE.Object3D[];
-}
-
-export interface CampWorld {
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  traveler: ReturnType<typeof makePerson>;
-  blockers: Blocker[];
-  spots: Spot[];
-  /** You can walk anywhere within this distance of the fire (except into blockers). */
-  radius: number;
+export interface CampWorld extends Area {
   /** The bench seat: where you sit and which way you face. */
   seat: { x: number; z: number; y: number; facing: number };
-  /** Resolves once the kit models are in place (or failed and the shapes stay). */
-  ready: Promise<void>;
-  update(dt: number, time: number): void;
-  resize(): void;
 }
+
+/** What you notice when you look at things at camp. Each look shows the next line. */
+const NOTES: Record<string, string[]> = {
+  fire: [
+    "Sparks drift up toward the first stars.",
+    "Della's kindling, dry as a bone. She thinks of everything.",
+  ],
+  tent: [
+    "Your tent. Old canvas, a little patched, but it kept the storm out.",
+    "Your bedroll is unrolled and waiting.",
+  ],
+  supplies: [
+    "Apples, a coil of rope and a barrel of water. Della packed more than you'll need.",
+    "There's a note tucked in the apple crate: \"Eat the bruised ones first. - D.\"",
+  ],
+  cart: [
+    "An old hand cart with a wobbly wheel. Someone left it here for whoever needs it.",
+    "Maybe one day it'll carry things back from the trail.",
+  ],
+};
 
 const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
   new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.95, ...extra });
-
-function glowTexture(): THREE.Texture {
-  const c = document.createElement("canvas");
-  c.width = c.height = 128;
-  const g = c.getContext("2d")!;
-  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, "rgba(255,240,200,1)");
-  grad.addColorStop(0.2, "rgba(255,200,110,0.8)");
-  grad.addColorStop(0.5, "rgba(255,150,60,0.25)");
-  grad.addColorStop(1, "rgba(255,120,40,0)");
-  g.fillStyle = grad;
-  g.fillRect(0, 0, 128, 128);
-  const tex = new THREE.CanvasTexture(c);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
 
 /** The words carved into the trail sign. */
 function signTexture(): THREE.Texture {
@@ -344,7 +315,8 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
   sign.add(board);
   scene.add(sign);
   block(SIGN.x, SIGN.z, 0.3);
-  spots.push({ id: "sign", label: "Read", x: SIGN.x, z: SIGN.z, range: 1.6, standX: SIGN.x - 0.3, standZ: SIGN.z + 1.0, tapTargets: [sign] });
+  // the trail starts here: the sign is how you set out on the next leg
+  spots.push({ id: "exit:leg1", label: "Set out", x: SIGN.x, z: SIGN.z, range: 1.6, standX: SIGN.x - 0.3, standZ: SIGN.z + 1.0, tapTargets: [sign] });
 
   const lanternGlows: THREE.Sprite[] = [];
   const lanternPosts: THREE.Group[] = [];
@@ -398,33 +370,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
 
   // ---------- dress with the kit models ----------
   async function dress() {
-    // The traveler's body comes first and never waits on the satchel
-    // ("Adventure Satchel" by Reidicus, CC BY 4.0, see CREDITS.md), which is
-    // hung on whichever body they wear once it arrives. If it fails, they go without.
-    let wearing: THREE.Object3D | null = null;
-    let satchel: THREE.Object3D | null = null;
-    const hang = () => {
-      if (!wearing || !satchel) return;
-      try {
-        wearSatchel(wearing, satchel);
-      } catch (err) {
-        console.warn("Could not hang the satchel.", err);
-      }
-    };
-    loadSatchel(loader, BASE)
-      .then((bag) => {
-        satchel = bag;
-        hang();
-      })
-      .catch((err) => console.warn("Satchel model did not load; the traveler goes without.", err));
-    const people = loadKayKit(loader, BASE).then((loaded) => {
-      const castFor = (l: PersonLook) => l.cast ?? "unknown";
-      const gear = (m: THREE.Object3D) => {
-        wearing = m;
-        hang();
-      };
-      frameHooks.push(wearKayKit(traveler, loaded, castFor, traveler.look, 1, gear));
-    });
+    const people = dressTraveler(traveler, frameHooks);
 
     const [kitBench, kitBarrel, kitCrate, apples, bag, bucket, pot, rope, lantern, wagon, fence] = await Promise.all([
       model("props", "Bench"),
@@ -601,7 +547,10 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook): Cam
     traveler,
     blockers,
     spots,
-    radius: RADIUS,
+    walk: [{ ax: 0, az: 0, bx: 0, bz: 0, r: RADIUS }],
+    start: { x: 0.4, z: 2.6, facing: Math.PI },
+    notes: NOTES,
+    fire: { x: 0, z: 0 },
     seat,
     ready,
     update(dt, time) {

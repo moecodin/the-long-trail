@@ -34,6 +34,10 @@ button { font-family: inherit; cursor: pointer; }
 .satchel-btn { width: 60px; height: 60px; padding: 6px; border-radius: 50%; border: 3px solid var(--wood-dark); background: radial-gradient(circle at 40% 35%, #f6e7c8, #d9b98a); box-shadow: 0 4px 14px #0008, 0 0 0 3px #f3e4c455; }
 .satchel-btn:active { transform: scale(0.94); }
 .satchel-btn svg { width: 100%; height: 100%; display: block; }
+/* a little hop when something goes in the satchel */
+.satchel-btn.bump { animation: satchel-bump 0.5s cubic-bezier(0.3, 1.6, 0.5, 1); }
+@keyframes satchel-bump { 0% { transform: scale(1); } 35% { transform: scale(1.22) rotate(-6deg); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .satchel-btn.bump { animation: none; } }
 .round-btn { width: 40px; height: 40px; border-radius: 50%; border: 2px solid #f3e4c466; background: #0b1020aa; color: var(--parchment); padding: 8px; }
 .round-btn svg { width: 100%; height: 100%; display: block; }
 

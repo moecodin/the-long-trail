@@ -14,7 +14,7 @@
 
 import * as THREE from "three";
 import type { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { Blocker } from "./camp";
+import { settle, type Blocker, type Capsule } from "./area";
 
 /**
  * Where the fox model is downloaded from. A local copy (dev and the preview
@@ -81,7 +81,7 @@ export interface Fox {
 interface FoxWorld {
   scene: THREE.Scene;
   blockers: Blocker[];
-  radius: number;
+  walk: Capsule[];
 }
 
 export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL): Promise<Fox> {
@@ -140,23 +140,7 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
   function step(dx: number, dz: number) {
     pos.x += dx;
     pos.z += dz;
-    for (let pass = 0; pass < 2; pass++) {
-      for (const b of world.blockers) {
-        const ox = pos.x - b.x, oz = pos.z - b.z;
-        const d = Math.hypot(ox, oz);
-        const min = b.r + BODY;
-        if (d < min && d > 1e-4) {
-          pos.x = b.x + (ox / d) * min;
-          pos.z = b.z + (oz / d) * min;
-        }
-      }
-      const r = Math.hypot(pos.x, pos.z);
-      const max = world.radius - BODY;
-      if (r > max) {
-        pos.x *= max / r;
-        pos.z *= max / r;
-      }
-    }
+    settle(pos, world.blockers, world.walk, BODY);
   }
 
   /** The spot it wants: a little behind the traveler, off to one side. */

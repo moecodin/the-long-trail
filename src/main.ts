@@ -18,6 +18,10 @@ import { mountSatchel } from "./ui/satchel";
 import { Sync } from "./journal/sync";
 import { campHint, chapterCard, creationScreen, say, skipButton, storybook, titleScreen } from "./ui/screens";
 import { startCamp, type CampSession } from "./camp/play";
+import { createCamp } from "./camp/camp";
+import { createLeg1 } from "./trail/leg1";
+import { ITEMS, pickNote, recordPick, type ItemId } from "./trail/gather";
+import { clockDay } from "./journal/data";
 
 // The Claude preview link can only serve web files, so that build ("npm run
 // build:preview") tucks the music inside the page instead of loading it.
@@ -80,12 +84,23 @@ const journal = mountSatchel({
     location.reload();
   },
   onChange: () => sync.schedule(),
+  gathered: () => ITEMS.map((i) => ({ id: i.id, name: i.name, count: save.gather.gathered[i.id] ?? 0, about: i.about, where: i.where })),
   onRested: () => camp?.note("You bank the fire and crawl into your tent. The day is written down. Goodnight."),
 });
 // The online backup (only does anything once you've signed in from the journal).
 // The Claude preview link can't reach Supabase, so it leaves the backup out.
 const sync = new Sync(journal, {
-  get: () => ({ data: { traveler: save.traveler, introSeen: save.introSeen, portraitStage: save.portraitStage }, updated: save.updated ?? 0 }),
+  get: () => ({
+    data: {
+      traveler: save.traveler,
+      introSeen: save.introSeen,
+      portraitStage: save.portraitStage,
+      gather: save.gather,
+      legsDone: save.legsDone,
+      legsSeen: save.legsSeen,
+    },
+    updated: save.updated ?? 0,
+  }),
   // progress from another device: take it, but keep this device's sound setting
   apply: (data, updated) => {
     Object.assign(save, data, { updated });
@@ -138,7 +153,7 @@ function frame(now: number) {
     fireSoundTimer -= dt;
     if (fireSoundTimer <= 0) {
       fireSoundTimer = 0.25;
-      audio.setFire(Math.max(0.08, 0.75 - camp.distanceToFire() * 0.07), 0.3);
+      audio.setFire(here === "camp" ? Math.max(0.08, 0.75 - camp.distanceToFire() * 0.07) : 0, 0.3);
     }
   } else {
     world.render(dt, clock.real);
@@ -336,30 +351,108 @@ async function dellaInTheDoorway(name: string) {
   await goToCamp(true);
 }
 
-// ---------- camp ----------
+// ---------- camp and the trail ----------
+
+type Place = "camp" | "leg1";
+/** Where you're walking around right now. */
+let here: Place = "camp";
+/** Just inside camp's north edge, by the trail sign, facing the fire: where you arrive back from the trail. */
+const FROM_TRAIL = { x: 0.6, z: -6.2, facing: 0 };
+
+/** The satchel button gives a little hop when something goes in. */
+function bumpSatchel() {
+  const b = document.querySelector(".satchel-btn");
+  b?.classList.remove("bump");
+  void (b as HTMLElement | null)?.offsetWidth;
+  b?.classList.add("bump");
+}
 
 async function goToCamp(firstTime: boolean) {
+  await enter("camp", { firstTime });
+}
+
+/**
+ * Walk into a place: fade to black, clear away the last place, maybe show a
+ * chapter card, build the new one and fade back in.
+ */
+async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, string]; startAt?: { x: number; z: number; facing: number } } = {}) {
   fadeBlack(true);
+  if (camp) {
+    await new Promise((r) => setTimeout(r, 700));
+    camp.dispose();
+    camp = null;
+    mode = "scene";
+  }
+  if (opts.card) await chapterCard(...opts.card);
   let hint: (() => void) | null = null;
   const t = travelerById(save.traveler!.id);
+  const today = clockDay(Date.now());
+  here = where;
   camp = startCamp({
     renderer: world.renderer,
     canvas,
     look: lookFor(t),
+    build: where === "camp" ? createCamp : (r, look) => createLeg1(r, look, save.gather, today),
+    startAt: opts.startAt,
     onFirstMove: () => hint?.(),
     tick: () => audio.tick(),
     onRest: () => journal.open("rest"),
+    onExit: (id) => void leave(id),
+    onGather: (spot) => {
+      const id = spot.gather as ItemId;
+      // a pick on a new morning still counts for today, whenever you set out
+      const n = recordPick(save.gather, spot.id, id, clockDay(Date.now()));
+      writeSave(save);
+      sync.schedule();
+      bumpSatchel();
+      audio.tick();
+      return pickNote(id, n);
+    },
   });
   await camp.ready;
   updatePause();
   mode = "camp";
   audio.setRain(0, 2);
-  audio.setMusicVolume(0.4, 3);
+  audio.setMusicVolume(where === "camp" ? 0.4 : 0.5, 3);
+  if (where !== "camp") audio.setFire(0, 1);
   // a beat for the first frame to draw before the fade lifts
   await new Promise((r) => setTimeout(r, 300));
   fadeBlack(false);
-  hint = campHint(firstTime);
-  setTimeout(() => journal.greetNewDay(), 1200);
+  if (where === "camp") {
+    hint = campHint(!!opts.firstTime);
+    setTimeout(() => journal.greetNewDay(), 1200);
+  }
+}
+
+/** Leaving a place by its exit: setting out from camp, heading back, or making camp at the end of a leg. */
+let leaving = false;
+async function leave(exit: string) {
+  if (leaving) return;
+  leaving = true;
+  try {
+    if (exit === "exit:leg1") {
+      const first = !save.legsSeen.includes(1);
+      if (first) {
+        save.legsSeen.push(1);
+        writeSave(save);
+      }
+      await enter("leg1", { card: first ? ["Leg 1", "The Lantern in the Window"] : undefined });
+    } else if (exit === "exit:back") {
+      await enter("camp", { startAt: FROM_TRAIL });
+    } else if (exit === "exit:camp") {
+      const first = !save.legsDone.includes(1);
+      if (first) {
+        save.legsDone.push(1);
+        writeSave(save);
+      }
+      await enter("camp", {
+        startAt: FROM_TRAIL,
+        card: first ? ["Leg 1 walked", "Past the last lantern, where the houses stop, you make your first camp on the trail."] : undefined,
+      });
+    }
+  } finally {
+    leaving = false;
+  }
 }
 
 // ---------- start ----------
@@ -386,7 +479,8 @@ async function start() {
   await kitsReady;
   // Testing shortcuts: ?from=camp goes straight to camp (picking a traveler
   // first if there isn't one yet). Dev server only: ?from=mirror opens the
-  // mirror screen, ?from=della jumps to Della at the door.
+  // mirror screen, ?from=della jumps to Della at the door, ?from=leg1 goes
+  // straight to the first leg of the trail.
   const params = new URLSearchParams(location.search);
   const from = import.meta.env.DEV || params.get("from") === "camp" ? params.get("from") : null;
   if (changeTraveler) {
@@ -403,6 +497,7 @@ async function start() {
     }
     return goToCamp(false);
   }
+  if (from === "leg1" && save.traveler) return enter("leg1");
   if (from === "mirror") {
     mode = "scene";
     jumpToMirror();
