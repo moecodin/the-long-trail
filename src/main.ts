@@ -346,13 +346,20 @@ async function dellaInTheDoorway(name: string) {
   await walkTo(della, spots.dellaIn, 0.8);
   face(della, traveler.root.position);
   await say("Della", "You saw it too, then.");
+  await say(name, "I thought I was dreaming it.", YOU);
+  await say("Della", "Dreams don't keep you up past midnight. That one's real.");
   await say("Della", "It's lit for someone. Don't look at me, my knees have done their walking.");
+  await say(name, "Then I suppose it's me.", YOU);
+  await say("Della", "I suppose it is. I had a feeling.");
 
   // she points at the table
   void director.tween(0.6, (t) => (della.rightArm.rotation.x = -1.3 * t));
   await director.moveCamera(camera, look, spots.tableCam, spots.tableLook, 2.5);
   await director.tween(1.2, (t) => world.setItemsGlow(t));
   await say("Della", `My old lantern, my journal and a good walking stick. They're yours now, ${name}.`);
+  await say(name, "Della, I can't take these.", YOU);
+  await say("Della", "You can, and you will. They've sat on that table long enough.");
+  await say(name, "Thank you.", YOU);
   await say("Della", "Get some sleep. We'll pack at dusk.");
   void director.tween(0.6, (t) => (della.rightArm.rotation.x = -1.3 * (1 - t)));
 
@@ -386,6 +393,9 @@ function saveChanged() {
   sync.schedule();
 }
 
+/** The traveler's own lines in a conversation. */
+const YOU = { you: true };
+
 const KEEPSAKES = [
   { id: "candle", name: "Candle lantern", line: "Her little one, for the dark bits.", art: doodleArt("lantern") },
   { id: "flower", name: "Pressed meadowflower", line: "From the meadow behind her cottage.", art: doodleArt("flower") },
@@ -412,6 +422,8 @@ async function dellaGifts() {
     await say("Della", `There you are, ${name}. Before you go, these are yours, properly now.`);
     await say("Della", "My lantern. It lights what the dark hides. Chalk marks too, if you know where to look.");
     await say("Della", "And the walking stick. Tap things with it. Half of this valley is hollower than it looks.");
+    await say(name, "I'll tap everything.", YOU);
+    await say("Della", "Not the hens, please.");
     await say("Della", "Now, take one thing off my table. Something to remember Lowmeadow by.");
     const keepsake = await pickKeepsake(KEEPSAKES);
     save.tools = ["stick", "lantern"];
@@ -433,6 +445,42 @@ async function dellaGifts() {
     updatePause();
   }
   camp?.note("You have the walking stick and the lantern. Tap odd-looking things with the stick, and shine the lantern into dark places.");
+}
+
+/** Della's tips for the road, one per chat, taken in turn. */
+const DELLA_TIPS = [
+  "Fill your satchel before you go. The herb bed's full and the hens have been busy.",
+  "Pick what you like. It all grows back by morning, same as always.",
+  "Follow the lane past the Tansys' and the Millers'. The trail starts where the houses stop.",
+];
+let dellaTip = 0;
+
+/**
+ * Talking to Della after she's given you her things. The first time after
+ * you've walked Leg 1, she asks about your first camp; otherwise you ask her
+ * for advice and she gives the next tip.
+ */
+let chatting = false;
+async function dellaChat() {
+  if (chatting) return;
+  chatting = true;
+  const name = save.traveler?.name ?? "traveler";
+  camp?.setPaused(true);
+  try {
+    if (save.legsDone.includes(1) && !save.talks.includes("della:firstCamp")) {
+      await say("Della", "You made your first camp! How was it?");
+      await say(name, "I could walk forever.", YOU);
+      await say("Della", "Save some for the mountain.");
+      save.talks.push("della:firstCamp");
+      saveChanged();
+    } else {
+      await say(name, "Any advice for the road?", YOU);
+      await say("Della", DELLA_TIPS[dellaTip++ % DELLA_TIPS.length]);
+    }
+  } finally {
+    chatting = false;
+    updatePause();
+  }
 }
 
 async function goToCamp(firstTime: boolean) {
@@ -469,6 +517,10 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
     onUse: (spot) => {
       if (spot.id === "della" && !save.tools.includes("stick")) {
         void dellaGifts();
+        return "";
+      }
+      if (spot.id === "della") {
+        void dellaChat();
         return "";
       }
       return null;

@@ -30,6 +30,8 @@ export interface Save {
   secrets: string[];
   /** Shortcuts you've opened, like "leg1:gate". */
   shortcuts: string[];
+  /** One-time conversations you've had, like "della:firstCamp". */
+  talks: string[];
   /** When this last changed (ms), for syncing. */
   updated?: number;
 }
@@ -50,6 +52,7 @@ const fresh = (): Save => ({
   firstLine: "",
   secrets: [],
   shortcuts: [],
+  talks: [],
 });
 
 export function loadSave(): Save {

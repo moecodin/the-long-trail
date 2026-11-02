@@ -68,12 +68,6 @@ function lanePoint(s: number, off = 0): { x: number; z: number } {
 }
 
 const NOTES: Record<string, string[]> = {
-  della: [
-    "\"There you are. Fill your satchel before you go. The herb bed's full and the hens have been busy.\"",
-    "\"Pick what you like. It all grows back by morning, same as always.\"",
-    "\"Follow the lane past the Tansys' and the Millers'. The trail starts where the houses stop.\"",
-    "\"Go on, then. I'll keep the lantern lit.\"",
-  ],
   window: [
     "Della's lantern glows in the window. She lights it every dusk, for whoever's out walking.",
     "From out here the cottage looks smaller than it did from inside.",
