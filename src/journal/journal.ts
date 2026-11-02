@@ -2,7 +2,8 @@
 //
 //   Today       what you've eaten, protein, fiber and the canteen (water)
 //   Log         write down a meal (name + calories, the rest is optional)
-//   My meals    meals you've saved, one tap to add again
+//   Meals       meals you've saved (one tap to add again) and your recipes
+//   Cards       the trail card album: recipes now, places and critters later
 //   Trends      the last 7 or 30 days, drawn as small charts
 //   Scale       weigh-ins and the weekly averages (the only thing the game reads)
 //   Setup       units, your details, the daily targets and a few options
@@ -10,6 +11,9 @@
 // Plus three pages that open on their own: first-time setup, "Rest at camp"
 // at the end of the day, and a look back at yesterday the first time you open
 // the game the next day (you can fix anything you forgot).
+//
+// Each day's page gets an ink stamp with a little doodle: faint until you log
+// something, inked once you do, and a mood doodle once you rest at camp.
 
 import { el, escapeHtml as esc } from "../ui/dom";
 import {
@@ -45,10 +49,12 @@ import {
   type Units,
 } from "./data";
 import type { Sync } from "./sync";
+import { cardArt, dayDoodle, doodle, moodDoodle } from "./doodles";
+import { KIND_LABEL, WAITING, knownRecipes, recipe, type CardKind, type Recipe } from "./recipes";
 import "./journal.css";
 
-export type JournalPage = "today" | "log" | "meals" | "trends" | "scale" | "setup";
-type Screen = JournalPage | "welcome" | "rest" | "yesterday";
+export type JournalPage = "today" | "log" | "meals" | "cards" | "trends" | "scale" | "setup";
+type Screen = JournalPage | "welcome" | "rest" | "yesterday" | "recipe";
 
 export interface JournalOptions {
   onOpen(): void;
@@ -66,10 +72,14 @@ const TABS: { id: JournalPage; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "log", label: "Log" },
   { id: "meals", label: "Meals" },
+  { id: "cards", label: "Cards" },
   { id: "trends", label: "Trends" },
   { id: "scale", label: "Scale" },
   { id: "setup", label: "Setup" },
 ];
+
+/** The trail card frame and back, from Quaternius' 3D Card Kit (see tools/render-card-frames.mjs). */
+const CARD_IMG = `${import.meta.env.BASE_URL}cards/`;
 
 const fmt = (n: number) => Math.round(n).toLocaleString("en-US");
 const num = (v: FormDataEntryValue | string | null | undefined) => {
@@ -99,6 +109,8 @@ interface Draft {
   fiber: string;
   takeout: boolean;
   save: boolean;
+  /** Set when the meal came from one of your recipes. */
+  recipeId?: string;
   /** Where to go after saving. */
   back: Screen;
 }
@@ -117,6 +129,13 @@ export class Journal {
   /** The online backup, once main.ts hooks it up. */
   sync: Sync | null = null;
   private backup = { email: "", step: "email" as "email" | "sent", msg: "", busy: false };
+  /** The recipe open on the recipe page, and which tab it was opened from. */
+  private recipeId = "";
+  private recipeBack: "meals" | "cards" = "cards";
+  /** The card picked in the album (a recipe id, or "waiting-N"). */
+  private cardPick = "";
+  /** Each day's stamp as last drawn, so a newly inked stamp can thump down. */
+  private stampsDrawn = new Map<string, string>();
 
   constructor(private opts: JournalOptions) {
     autoRest(this.d);
@@ -206,7 +225,8 @@ export class Journal {
     if (!this.panel) return;
     const s = this.screen;
     const [left, right] = this.pages(s);
-    const tabbed = (TABS as { id: string }[]).some((t) => t.id === s);
+    const tab = s === "recipe" ? this.recipeBack : s;
+    const tabbed = (TABS as { id: string }[]).some((t) => t.id === tab);
     const name = this.opts.travelerName();
     this.panel.innerHTML = `
       <div class="j-book" role="dialog" aria-label="${name ? `${esc(name)}'s journal` : "Your journal"}">
@@ -215,7 +235,7 @@ export class Journal {
         ${
           tabbed
             ? `<div class="j-tabs" role="tablist">${TABS.map(
-                (t) => `<button role="tab" aria-selected="${t.id === s}" data-go="${t.id}">${t.label}</button>`,
+                (t) => `<button role="tab" aria-selected="${t.id === tab}" data-go="${t.id}">${t.label}</button>`,
               ).join("")}</div>`
             : ""
         }
@@ -237,6 +257,10 @@ export class Journal {
         return this.logPages();
       case "meals":
         return this.mealsPages();
+      case "cards":
+        return this.cardsPages();
+      case "recipe":
+        return this.recipePages();
       case "trends":
         return this.trendsPages();
       case "scale":
@@ -306,13 +330,12 @@ export class Journal {
     const rested = clockDay(Date.now()) !== day;
     const lastRest = rested ? restFor(this.d, addDays(day, -1)) : null;
     return [
-      `<h2>${rested ? "Tomorrow's page" : "Today on the trail"}</h2>
-       <p class="j-date">${longDay(day)}</p>
+      `${this.pageHead(rested ? "Tomorrow's page" : "Today on the trail", longDay(day), day)}
        ${this.dayTiles(day, true)}`,
       `<h2>Meals</h2>
        ${
          lastRest
-           ? `<p class="j-note"><span class="j-stamp">Rested at camp</span> ${lastRest.line ? `<span class="hand">“${esc(lastRest.line)}”</span>` : ""}<br><span class="j-faint">Anything you log tonight goes on this new page.</span></p>`
+           ? `<div class="j-rested">${this.stamp(lastRest.day, true)}<p class="j-note">${lastRest.line ? `<span class="hand">“${esc(lastRest.line)}”</span><br>` : ""}<span class="j-faint">Rested at camp. Anything you log tonight goes on this new page.</span></p></div>`
            : ""
        }
        ${this.mealList(day, "Nothing written yet today.")}
@@ -325,7 +348,7 @@ export class Journal {
 
   // ---------- log a meal ----------
 
-  private newDraft(day: string, back: Screen, from?: Partial<SavedMeal>): Draft {
+  private newDraft(day: string, back: Screen, from?: Partial<SavedMeal> & { recipeId?: string }): Draft {
     return {
       id: null,
       day,
@@ -338,6 +361,7 @@ export class Journal {
       fiber: from?.fiber ? String(from.fiber) : "",
       takeout: from?.takeout ?? false,
       save: !from,
+      recipeId: from?.recipeId,
       back,
     };
   }
@@ -353,7 +377,7 @@ export class Journal {
       `<h2>${editing ? "Change a meal" : "Log a meal"}</h2>
        <p class="j-date">${dr.day === today ? "Today" : longDay(dr.day)}${editing ? "" : ", the time is added for you"}</p>
        <label class="j-field"><span>What was it?</span><input name="name" value="${esc(dr.name)}" list="j-saved" autocomplete="off" enterkeyhint="next"></label>
-       <datalist id="j-saved">${saved.map((m) => `<option value="${esc(m.name)}">`).join("")}</datalist>
+       <datalist id="j-saved">${[...saved.map((m) => m.name), ...knownRecipes().map((r) => r.name)].map((n) => `<option value="${esc(n)}">`).join("")}</datalist>
        <div class="j-two">${field("kcal", "Calories", "numeric")}${field("servings", "Servings")}</div>
        <label class="j-check"><input type="checkbox" name="takeout" ${dr.takeout ? "checked" : ""}><span>Takeout or eating out <span class="j-faint">(an inn night)</span></span></label>`,
       `<h2>If you know them</h2>
@@ -389,6 +413,7 @@ export class Journal {
       // a meal added to an earlier day is timed in that day's evening
       const at = dr.day === journalDay(this.d, now) ? now : dayDate(dr.day).getTime() + 19 * 3600_000;
       const meal: Meal = { id: newId(), updated: now, day: dr.day, at, name, servings, takeout: dr.takeout, ...nutrients };
+      if (dr.recipeId) meal.recipeId = dr.recipeId;
       this.d.meals.push(meal);
       if (dr.save) {
         const existing = live(this.d.savedMeals).find((s) => s.name.toLowerCase() === name.toLowerCase());
@@ -397,7 +422,8 @@ export class Journal {
       }
     }
     this.persist();
-    const back = dr.back === "log" ? "today" : dr.back;
+    // a meal logged from a recipe goes on to today's page, so you can see it there
+    const back = dr.back === "log" || dr.back === "recipe" ? "today" : dr.back;
     this.draft = null;
     this.go(back);
     this.toast(dr.id ? "Changed" : `Written down: ${name}`);
@@ -423,9 +449,144 @@ export class Journal {
                .join("")}</ul>`
            : `<p class="hand j-faint">Meals you log are saved here, so the next time is one tap.</p>`
        }`,
-      `<h2>Found recipes</h2>
-       <p class="j-date">Gathered along the trail</p>
-       <p class="hand j-faint">No recipes yet. As you walk the trail you'll find real recipes in villages and inns, and they'll be kept on this page.</p>`,
+      `<h2>Recipes</h2>
+       <p class="j-date">Real ones, to cook at home</p>
+       <ul class="j-list">${knownRecipes()
+         .map(
+           (r) => `<li><button class="j-item" data-act="open-recipe" data-id="${r.id}" data-from="meals"><span>${esc(r.name)}</span><span class="hand j-faint">${hide ? r.meal.toLowerCase() : `${fmt(r.kcal)} kcal`}</span></button></li>`,
+         )
+         .join("")}</ul>
+       <p class="j-faint j-small">More recipes are found along the trail, in villages and inns.</p>`,
+    ];
+  }
+
+  // ---------- day stamps ----------
+
+  /** A page's heading and date, with that day's stamp beside them. */
+  private pageHead(title: string, date: string, day: string) {
+    return `<div class="j-head"><div><h2>${title}</h2><p class="j-date">${date}</p></div>${this.stamp(day)}</div>`;
+  }
+
+  /**
+   * The ink stamp for a day: a faint pencil outline until you log something,
+   * "On the trail" with the day's doodle once you have, and "Rested at camp"
+   * with a doodle for your mood once the day is closed.
+   */
+  private stamp(day: string, small = false) {
+    const r = restFor(this.d, day);
+    const logged =
+      mealsFor(this.d, day).length > 0 || waterFor(this.d, day) > 0 || live(this.d.weighIns).some((w) => w.day === day);
+    const state = r ? (r.auto ? "slept" : "rested") : logged ? "logged" : "blank";
+    const before = this.stampsDrawn.get(day);
+    this.stampsDrawn.set(day, state);
+    const fresh = before !== undefined && before !== state && state !== "blank";
+    const words = { blank: "Today's stamp", logged: "On the trail", rested: "Rested at camp", slept: "Slept by the fire" }[state];
+    const pic = r ? moodDoodle(r.mood) : dayDoodle(day);
+    const date = dayDate(day).toLocaleDateString("en-US", { month: "short", day: "numeric" }).toUpperCase();
+    let h = 0;
+    for (const c of day) h = (h * 33 + c.charCodeAt(0)) % 997;
+    const tilt = (h % 15) - 7;
+    const id = `st-${day}-${small ? "s" : "b"}`;
+    const label = state === "blank" ? "Today's stamp, not inked yet. Log something to ink it." : `Stamp: ${words}, ${date}`;
+    return `<div class="j-daystamp ${state}${small ? " small" : ""}${fresh ? " fresh" : ""}" style="--tilt:${tilt}deg" role="img" aria-label="${label}">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <defs>
+          <path id="${id}-t" d="M18 50a32 32 0 0 1 64 0"/>
+          <path id="${id}-b" d="M14 50a36 36 0 0 0 72 0"/>
+          <filter id="${id}-ink"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="${h}"/><feDisplacementMap in="SourceGraphic" scale="2.2"/></filter>
+        </defs>
+        <g filter="url(#${id}-ink)">
+          <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3"/>
+          <circle cx="50" cy="50" r="27" fill="none" stroke="currentColor" stroke-width="1.2"/>
+          <text font-size="${Math.min(11.5, 112 / words.length).toFixed(1)}" letter-spacing="0.8"><textPath href="#${id}-t" startOffset="50%" text-anchor="middle">${words.toUpperCase()}</textPath></text>
+          <text font-size="11" letter-spacing="1.5"><textPath href="#${id}-b" startOffset="50%" text-anchor="middle">· ${date} ·</textPath></text>
+          <svg x="31" y="31" width="38" height="38" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${doodle(pic).replace(/^<svg[^>]*>|<\/svg>$/g, "")}</svg>
+        </g>
+      </svg>
+    </div>`;
+  }
+
+  // ---------- trail cards ----------
+
+  /** One trail card in the Card Kit frame. Recipes are the only cards so far. */
+  private card(r: Recipe | null, opts: { big?: boolean; still?: boolean; picked?: boolean; waiting?: { kind: CardKind; hint: string }; n?: number } = {}) {
+    const cls = `tc ${r ? "recipe" : "back"}${opts.big ? " big" : ""}`;
+    const label = r ? `${esc(r.name)} recipe card` : `A ${KIND_LABEL[opts.waiting!.kind].toLowerCase()} card still out on the trail`;
+    // the album's cards are buttons; a card shown on its own is just a picture
+    const open = opts.still
+      ? `<div class="${cls}" role="img" aria-label="${label}">`
+      : `<button class="${cls}" data-act="pick-card" data-id="${r ? r.id : `waiting-${opts.n}`}" aria-pressed="${!!opts.picked}" aria-label="${label}">`;
+    const close = opts.still ? "</div>" : "</button>";
+    if (!r) return `${open}<img src="${CARD_IMG}back.png" alt="" draggable="false">${close}`;
+    return `${open}
+      <span class="tc-window">
+        <span class="tc-kind">Recipe</span>
+        ${cardArt(r.id)}
+        <span class="tc-name">${esc(r.name)}</span>
+        ${opts.big ? `<span class="tc-line">${esc(r.line)}</span>` : ""}
+      </span>
+      <img class="tc-frame" src="${CARD_IMG}frame.png" alt="" draggable="false">${close}`;
+  }
+
+  private cardsPages(): [string, string] {
+    const known = knownRecipes();
+    if (!this.cardPick) this.cardPick = known[0]?.id ?? "";
+    const pick = this.cardPick;
+    const grid = [
+      ...known.map((r) => this.card(r, { picked: r.id === pick })),
+      ...WAITING.map((w, n) => this.card(null, { waiting: w, n, picked: pick === `waiting-${n}` })),
+    ].join("");
+    const r = recipe(pick);
+    const w = pick.startsWith("waiting-") ? WAITING[Number(pick.slice(8))] : null;
+    const right = r
+      ? `<div class="tc-show">${this.card(r, { big: true, still: true })}
+           <div class="tc-about">
+             <h2>${esc(r.name)}</h2>
+             <p class="j-date">${r.meal} · serves ${r.serves}</p>
+             <p class="j-small j-faint">${r.minutes}</p>
+             <div class="j-spread"><button class="j-btn small" data-act="open-recipe" data-id="${r.id}" data-from="cards">Open the recipe</button></div>
+           </div></div>`
+      : w
+        ? `<div class="tc-show">${this.card(null, { big: true, still: true, waiting: w })}
+           <div class="tc-about">
+             <h2>Still on the trail</h2>
+             <p class="j-date">A ${KIND_LABEL[w.kind].toLowerCase()} card</p>
+             <p class="hand">${esc(w.hint)}…</p>
+           </div></div>`
+        : "";
+    return [
+      `<h2>Trail cards</h2>
+       <p class="j-date">${known.length} found so far. Tap one to look closer</p>
+       <div class="tc-grid">${grid}</div>`,
+      right,
+    ];
+  }
+
+  // ---------- a recipe ----------
+
+  private recipePages(): [string, string] {
+    const r = recipe(this.recipeId);
+    if (!r) return this.cardsPages();
+    const hide = this.d.settings.hideKcal;
+    const row = (label: string, v: string) => `<div class="j-row"><span>${label}</span><span class="hand">${v}</span></div>`;
+    return [
+      `<h2>${esc(r.name)}</h2>
+       <p class="j-date">${r.meal} · serves ${r.serves} · ${r.minutes}</p>
+       <div class="tc-show">${this.card(r, { still: true })}
+         <div class="j-tile tc-about">
+           <span class="j-small j-faint">Each serving, about</span>
+           ${hide ? "" : row("Calories", `${fmt(r.kcal)} kcal`)}
+           ${row("Protein", `${r.protein} g`)}${row("Carbs", `${r.carbs} g`)}${row("Fat", `${r.fat} g`)}${row("Fiber", `${r.fiber} g`)}
+         </div>
+       </div>
+       <div class="j-spread">
+         <button class="j-btn" data-act="log-recipe">Log a serving</button>
+         <button class="j-link" data-go="${this.recipeBack}">Back to ${this.recipeBack === "cards" ? "cards" : "recipes"}</button>
+       </div>`,
+      `<h2>You'll need</h2>
+       <ul class="j-ingredients">${r.ingredients.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>
+       <h2>Steps</h2>
+       <ol class="j-steps">${r.steps.map((st) => `<li>${esc(st)}</li>`).join("")}</ol>`,
     ];
   }
 
@@ -698,8 +859,7 @@ export class Journal {
   private restPages(): [string, string] {
     const day = journalDay(this.d);
     return [
-      `<h2>Rest at camp</h2>
-       <p class="j-date">${longDay(day)}</p>
+      `${this.pageHead("Rest at camp", longDay(day), day)}
        ${this.dayTiles(day, true)}`,
       `<h2>Tonight's line</h2>
        ${this.restChoices(day)}
@@ -728,8 +888,7 @@ export class Journal {
     const day = this.yesterdayDay();
     const r = restFor(this.d, day);
     return [
-      `<h2>Yesterday at camp</h2>
-       <p class="j-date">${longDay(day)}</p>
+      `${this.pageHead("Yesterday at camp", longDay(day), day)}
        ${this.mealList(day, "No meals written down.")}
        <div class="j-spread">
          <button class="j-btn ghost small" data-act="add-to-yesterday">Add a meal I forgot</button>
@@ -752,9 +911,12 @@ export class Journal {
       (this.draft as unknown as Record<string, unknown>)[t.name] = value;
       // picking a saved meal's name fills in its numbers
       if (t.name === "name" && e.type === "change") {
-        const m = live(this.d.savedMeals).find((s) => s.name.toLowerCase() === String(value).trim().toLowerCase());
-        if (m && !this.draft.id) {
-          this.draft = { ...this.newDraft(this.draft.day, this.draft.back, m), save: false };
+        const typed = String(value).trim().toLowerCase();
+        const m = live(this.d.savedMeals).find((s) => s.name.toLowerCase() === typed);
+        const r = m ? null : knownRecipes().find((x) => x.name.toLowerCase() === typed);
+        const from = m ?? (r && { name: r.name, kcal: r.kcal, protein: r.protein, carbs: r.carbs, fat: r.fat, fiber: r.fiber, recipeId: r.id });
+        if (from && !this.draft.id) {
+          this.draft = { ...this.newDraft(this.draft.day, this.draft.back, from), save: false };
           this.render();
         }
       }
@@ -889,6 +1051,21 @@ export class Journal {
         this.markYesterdaySeen();
         this.go("today");
         return this.toast("A fresh page for today");
+      }
+      case "pick-card":
+        this.cardPick = id;
+        return this.render();
+      case "open-recipe":
+        this.recipeId = id;
+        this.recipeBack = b.dataset.from === "meals" ? "meals" : "cards";
+        this.cardPick = id;
+        return this.go("recipe");
+      case "log-recipe": {
+        const r = recipe(this.recipeId);
+        if (!r) return;
+        const { name, kcal, protein, carbs, fat, fiber } = r;
+        this.draft = { ...this.newDraft(journalDay(this.d), "recipe", { name, kcal, protein, carbs, fat, fiber, recipeId: r.id }), save: false };
+        return this.go("log");
       }
       case "trend-days":
         this.trendDays = Number(b.dataset.n) as 7 | 30;
