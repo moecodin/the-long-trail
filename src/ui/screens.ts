@@ -179,6 +179,85 @@ export async function say(speaker: string, line: string): Promise<void> {
   await hide(node, 250);
 }
 
+// ---------- Della's table: pick a keepsake ----------
+
+export interface KeepsakeChoice {
+  id: string;
+  name: string;
+  line: string;
+  /** A small ink drawing (SVG markup on a 32 by 32 grid). */
+  art: string;
+}
+
+/** Three things on Della's table; tap one to take it. */
+export function pickKeepsake(choices: KeepsakeChoice[]): Promise<string> {
+  const node = el(
+    "div",
+    "overlay pick-card",
+    `<div class="pick-inner">
+      <p class="kicker">Della's table</p>
+      <h2>Take one thing to remember Lowmeadow by</h2>
+      <div class="pick-row">${choices
+        .map(
+          (c) => `<button class="pick-opt" data-id="${escapeHtml(c.id)}">
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${c.art}</svg>
+            <span class="pick-name">${escapeHtml(c.name)}</span>
+            <span class="pick-line">${escapeHtml(c.line)}</span>
+          </button>`,
+        )
+        .join("")}</div>
+    </div>`,
+  );
+  node.addEventListener("pointerup", (e) => e.stopPropagation());
+  show(node);
+  return new Promise((resolve) => {
+    node.addEventListener("click", (e) => {
+      const b = (e.target as HTMLElement).closest<HTMLButtonElement>(".pick-opt");
+      if (!b) return;
+      node.querySelectorAll(".pick-opt").forEach((o) => o.classList.toggle("chosen", o === b));
+      setTimeout(() => {
+        void hide(node, 500);
+        resolve(b.dataset.id!);
+      }, 450);
+    });
+  });
+}
+
+// ---------- the journal's first page: a line to your future self ----------
+
+/** Write one line for whoever you'll be at the Summit. Suggestions fill the box; you can change them. */
+export function writeFirstLine(name: string, suggestions: string[]): Promise<string> {
+  const node = el(
+    "div",
+    "overlay first-page",
+    `<form class="first-inner">
+      <p class="kicker">The first page of Della's journal</p>
+      <h2>Write a line to the ${escapeHtml(name)} who reaches the Summit</h2>
+      <div class="first-sugs">${suggestions.map((s) => `<button type="button" class="first-sug">${escapeHtml(s)}</button>`).join("")}</div>
+      <input name="line" maxlength="140" autocomplete="off" enterkeyhint="done" placeholder="Dear me at the Summit…">
+      <div class="first-actions"><button class="wood-btn confirm" type="submit">Write it</button><button class="first-later" type="button">Not now</button></div>
+    </form>`,
+  );
+  node.addEventListener("pointerup", (e) => e.stopPropagation());
+  show(node);
+  const input = node.querySelector("input")!;
+  node.querySelectorAll<HTMLButtonElement>(".first-sug").forEach((b) => b.addEventListener("click", () => (input.value = b.textContent ?? "")));
+  // typing on a phone: keep the game's keys out of it
+  input.addEventListener("keydown", (e) => e.stopPropagation());
+  return new Promise((resolve) => {
+    const done = (line: string) => {
+      input.blur();
+      void hide(node, 600);
+      resolve(line.replace(/\s+/g, " ").trim());
+    };
+    node.querySelector("form")!.addEventListener("submit", (e) => {
+      e.preventDefault();
+      done(input.value);
+    });
+    node.querySelector(".first-later")!.addEventListener("click", () => done(""));
+  });
+}
+
 // ---------- end card ----------
 
 /** A short title card between scenes, like a page in a storybook. Tap or wait to go on. */

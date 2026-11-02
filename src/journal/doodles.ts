@@ -40,6 +40,9 @@ const MOOD: Record<Mood, string> = {
   proud: "summit",
 };
 
+/** A doodle's inner drawing, without the svg around it. */
+export const doodleArt = (name: string) => D[name] ?? D.fern;
+
 export function doodle(name: string, cls = "j-doodle") {
   return `<svg class="${cls}" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${D[name] ?? D.fern}</svg>`;
 }

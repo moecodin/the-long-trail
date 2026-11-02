@@ -64,6 +64,16 @@ export interface Area {
   seat?: { x: number; z: number; y: number; facing: number };
   /** Resolves once the kit models are in place (or failed and the shapes stay). */
   ready: Promise<void>;
+  /**
+   * The area's own reaction to using a spot (tapping with the stick, opening a
+   * gate...). Return a note to show, "" to say nothing, or null to fall back
+   * to the area's notes.
+   */
+  use?(spot: Spot): string | null;
+  /** Something nearby the fox finds very interesting (an unfound secret), if any. */
+  interest?(x: number, z: number): { x: number; z: number } | null;
+  /** Things changed outside the area (you were given a tool...): redraw what depends on them. */
+  refresh?(): void;
   /** Take a picked-up thing out of the world (its little float-up is done by the area). */
   pick?(spot: Spot, toward: THREE.Vector3): void;
   update(dt: number, time: number): void;

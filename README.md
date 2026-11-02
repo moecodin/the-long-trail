@@ -75,6 +75,21 @@ and sage in the herb bed, eggs by the hen house, windfall apples under the
 apple tree, and chamomile and field mushrooms along the lane. The models are in
 `src/trail/gather.ts` (`ITEMS`), so swapping one is a one-line change.
 
+**Della's gifts:** the first time you **Talk** to Della by her door, she hands
+over the walking stick (on your back) and the lantern (at your hip), you take
+one keepsake off her table (a candle lantern, a pressed meadowflower or a
+wooden spoon, which then shows up at camp), and you write a line on the
+journal's first page for yourself at the Summit (shown on the Today page).
+
+**Tools and secrets:** with the stick you can **Knock** apples out of the tree
+(once a day) and **Tap** things that look a bit off. Leg 1 has three secrets:
+a pale cracked stone by the well, a hollow log in the long grass, and a chalk
+mark under some roots that only shows when you **Shine** the lantern on it. The
+fox stops and stares when you walk near an unfound one. Della's back gate is
+latched from the lane side: find it from the lane and **Unlatch** it for a
+shortcut. Everything you find is kept in the save (`tools`, `keepsake`,
+`firstLine`, `secrets`, `shortcuts`) and backed up with the journal.
+
 Add `?from=leg1` to the address (dev server) to start right in Leg 1.
 
 ## Play it

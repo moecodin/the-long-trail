@@ -191,3 +191,10 @@
 .j-gshow { display: flex; gap: 14px; align-items: center; }
 .j-gbig { width: 84px; height: 84px; flex: none; color: var(--j-leaf); padding: 8px; border: 2px dashed #5c7a3e66; border-radius: 50%; }
 @media (max-height: 430px) { .j-gbig { width: 64px; height: 64px; } .j-gathered .j-item { padding: 5px 2px; } }
+
+/* the line you wrote to yourself on the journal's first page */
+.j-first-line {
+  margin: 0.8rem 0 0;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}

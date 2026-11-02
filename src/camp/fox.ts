@@ -75,7 +75,7 @@ export interface Fox {
   /** Put the fox somewhere right away (no walking). */
   placeAt(x: number, z: number, facing: number): void;
   /** Follow the traveler at (x, z), who faces `facing` (radians). */
-  update(dt: number, x: number, z: number, facing: number, seated: boolean): void;
+  update(dt: number, x: number, z: number, facing: number, seated: boolean, interest?: { x: number; z: number } | null): void;
 }
 
 interface FoxWorld {
@@ -156,7 +156,7 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
       pos.set(x, 0, z);
       facing = root.rotation.y = f;
     },
-    update(dt, tx, tz, tf, seated) {
+    update(dt, tx, tz, tf, seated, interest) {
       // Pick the side of the traveler the fox is already on, so it doesn't cross in front.
       const fx = Math.sin(tf), fz = Math.cos(tf);
       const onLeft = (pos.x - tx) * fz - (pos.z - tz) * fx > 0;
@@ -185,6 +185,8 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
           glanceTimer = 2.5 + Math.random() * 3.5;
         }
         if (glanceTo !== null) facing = glanceTo;
+        // something odd nearby: the fox stares right at it, ears up, and won't look away
+        if (interest && Math.hypot(interest.x - pos.x, interest.z - pos.z) < 4.5) facing = Math.atan2(interest.x - pos.x, interest.z - pos.z);
       }
       speed += (want - speed) * Math.min(1, dt * 6);
       if (speed < 0.03 && want === 0) speed = 0;

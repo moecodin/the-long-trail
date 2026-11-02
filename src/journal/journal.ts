@@ -68,6 +68,8 @@ export interface JournalOptions {
   onChange?(d: JournalData): void;
   /** Everything you can gather on the trail, and how many of each you've picked (the game keeps these). */
   gathered?(): GatheredItem[];
+  /** The line you wrote on the journal's first page, for yourself at the Summit. */
+  firstLine?(): string | null;
 }
 
 /** One kind of thing you can pick on the trail, for the Gathered page. */
@@ -347,7 +349,11 @@ export class Journal {
     const lastRest = rested ? restFor(this.d, addDays(day, -1)) : null;
     return [
       `${this.pageHead(rested ? "Tomorrow's page" : "Today on the trail", longDay(day), day)}
-       ${this.dayTiles(day, true)}`,
+       ${this.dayTiles(day, true)}
+       ${(() => {
+         const first = this.opts.firstLine?.();
+         return first ? `<p class="j-first-line"><span class="j-faint">From the first page:</span> <span class="hand">“${esc(first)}”</span></p>` : "";
+       })()}`,
       `<h2>Meals</h2>
        ${
          lastRest

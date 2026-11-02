@@ -184,3 +184,21 @@ button { font-family: inherit; cursor: pointer; }
 @media (orientation: portrait) {
   .action-btn, .camp-note, .camp-hint, .stick-base { display: none; }
 }
+
+/* ---------- Della's table and the journal's first page ---------- */
+.pick-card, .first-page { background: #05070dcc; padding: 12px calc(var(--safe-right) + 84px) 12px calc(var(--safe-left) + 20px); }
+.pick-inner, .first-inner { width: 100%; max-width: 680px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.pick-inner h2, .first-inner h2 { margin: 0 0 4px; font-weight: normal; font-size: 1.35rem; }
+.pick-row { display: flex; gap: 12px; justify-content: center; width: 100%; }
+.pick-opt { flex: 1 1 0; max-width: 200px; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 10px; border-radius: 14px; border: 2px solid var(--wood-dark); background: linear-gradient(#f6e9cc, #ecd8b0); color: var(--ink); box-shadow: 0 6px 18px #0008; transition: transform 0.2s; }
+.pick-opt svg { width: 56px; height: 56px; color: #6e3b2a; }
+.pick-opt:active { transform: scale(0.96); }
+.pick-opt.chosen { transform: translateY(-6px); box-shadow: 0 0 0 3px var(--glow), 0 10px 22px #000a; }
+.pick-name { font-weight: bold; font-size: 1.05rem; }
+.pick-line { font-size: 0.88rem; line-height: 1.3; opacity: 0.85; }
+.first-sugs { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.first-sug { font-family: var(--hand); font-size: 1.05rem; padding: 5px 12px; border-radius: 10px; border: 1px dashed #f3e4c488; background: #f3e4c41a; color: var(--parchment); }
+.first-inner input { width: min(100%, 520px); font-family: var(--hand); font-size: 1.35rem; padding: 8px 14px; border-radius: 10px; border: 2px solid var(--wood-dark); background: #f6e9cc; color: var(--ink); user-select: text; -webkit-user-select: text; }
+.first-actions { display: flex; gap: 14px; align-items: center; }
+.first-later { background: none; border: none; color: var(--parchment); text-decoration: underline; opacity: 0.8; font-size: 0.95rem; }
+@media (max-height: 430px) { .pick-opt svg { width: 40px; height: 40px; } .pick-line { font-size: 0.8rem; } .pick-inner h2, .first-inner h2 { font-size: 1.15rem; } }

@@ -156,6 +156,8 @@ interface Pickable {
   sparkles: THREE.Sprite[];
   /** Set while it floats up into the satchel. */
   flying: { t: number; from: THREE.Vector3; to: THREE.Vector3 } | null;
+  /** Set while it drops from a branch: how fast it's falling, and where the ground is. */
+  falling: { v: number; ground: number } | null;
   phase: number;
 }
 
@@ -175,7 +177,7 @@ export class Pickables {
   ) {}
 
   /** Put something to pick at (x, z). Skipped if it was already picked today. */
-  async add(spotId: string, id: ItemId, x: number, z: number, y = 0, ry = Math.random() * Math.PI * 2) {
+  async add(spotId: string, id: ItemId, x: number, z: number, y = 0, ry = Math.random() * Math.PI * 2, fromY?: number) {
     if (!grown(this.save, spotId, this.today)) return;
     const it = item(id)!;
     const thing = "built" in it.model ? (it.model.built === "apple" ? buildApple() : buildEgg()) : await model("nature", it.model.name);
@@ -206,7 +208,12 @@ export class Pickables {
 
     const spot: Spot = { id: spotId, label: "Pick", x, z, range: 1.15, standX: x, standZ: z + 0.55, tapTargets: [thing, ring], gather: id };
     this.spots.push(spot);
-    this.list.push({ spot, root, thing, ring, sparkles, flying: null, phase: Math.random() * 10 });
+    const falling = fromY !== undefined ? { v: 0, ground: y } : null;
+    if (falling) {
+      root.position.y = fromY!;
+      ring.visible = false;
+    }
+    this.list.push({ spot, root, thing, ring, sparkles, flying: null, falling, phase: Math.random() * 10 });
   }
 
   /** It floats up toward the satchel, shrinking, then it's gone. */
@@ -221,6 +228,23 @@ export class Pickables {
   update(dt: number, time: number) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const p = this.list[i];
+      if (p.falling) {
+        // tumble down, with one small bounce
+        const f = p.falling;
+        f.v -= 9.8 * dt;
+        p.root.position.y += f.v * dt;
+        p.thing.rotation.x += dt * 6;
+        if (p.root.position.y <= f.ground) {
+          p.root.position.y = f.ground;
+          if (f.v < -2.5) f.v = -f.v * 0.3;
+          else {
+            p.falling = null;
+            p.thing.rotation.x = 0;
+            p.ring.visible = true;
+          }
+        }
+        continue;
+      }
       if (p.flying) {
         const f = p.flying;
         f.t += dt / 0.5;
