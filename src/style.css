@@ -133,6 +133,11 @@ button { font-family: inherit; cursor: pointer; }
 .speaker { margin: 0 0 4px; font-weight: bold; color: #6e3b2a; font-size: 0.9rem; letter-spacing: 0.06em; text-transform: uppercase; }
 .line { margin: 0; font-size: 1.15rem; line-height: 1.4; }
 .more { position: absolute; right: 14px; bottom: 6px; font-size: 0.8rem; animation: breathe 1.6s infinite; }
+/* the traveler's own lines sit to the right, in a paler box with a green name */
+.dialogue.you { align-items: flex-end; }
+.dialogue.you .speech { width: min(100%, 520px); background: linear-gradient(#fbf4e2, #f1e4c6); }
+.dialogue.you .speaker { color: #3f6a3a; text-align: right; }
+.dialogue.you .line { font-style: italic; }
 
 /* ---------- end card ---------- */
 .end-card { background: #05070dcc; padding: 16px calc(var(--safe-right) + 84px) 16px calc(var(--safe-left) + 24px); }

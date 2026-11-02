@@ -170,9 +170,12 @@ export function creationScreen(current: CreationResult | null, stage: number): P
 
 // ---------- dialogue ----------
 
-/** Show a line of dialogue. Resolves on a tap (after a short moment so it isn't skipped by accident). */
-export async function say(speaker: string, line: string): Promise<void> {
-  const node = el("div", "overlay dialogue", `<div class="speech"><p class="speaker">${escapeHtml(speaker)}</p><p class="line">${escapeHtml(line)}</p><span class="more">▼</span></div>`);
+/**
+ * Show a line of dialogue. Resolves on a tap (after a short moment so it isn't skipped by accident).
+ * `you` marks the traveler's own lines, so their box reads as a reply.
+ */
+export async function say(speaker: string, line: string, opts: { you?: boolean } = {}): Promise<void> {
+  const node = el("div", `overlay dialogue${opts.you ? " you" : ""}`, `<div class="speech"><p class="speaker">${escapeHtml(speaker)}</p><p class="line">${escapeHtml(line)}</p><span class="more">▼</span></div>`);
   show(node);
   await new Promise((r) => setTimeout(r, 450));
   await tapOn(node);
