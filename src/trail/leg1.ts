@@ -20,7 +20,7 @@ import type { Save } from "../save";
 
 /** What Leg 1 reads and changes in the save, and how to tell the game it changed. */
 export interface Leg1Context {
-  save: Pick<Save, "gather" | "tools" | "secrets" | "shortcuts">;
+  save: Pick<Save, "gather" | "tools" | "secrets" | "shortcuts" | "quests">;
   /** Today's date in the journal's sense (the day starts at 4 a.m.). */
   today: string;
   /** Something in the save changed: write it down. */
@@ -628,6 +628,131 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
   }
   let gateSwing = 0; // 0 → 1 while it swings open
 
+  // ---------- side paths: goodbyes in the lane, and the mice's lost kettle ----------
+  const quests = save.quests;
+  const q = (id: string) => quests.includes(id);
+  const setQ = (...ids: string[]) => {
+    for (const id of ids) if (!quests.includes(id)) quests.push(id);
+    ctx.changed();
+  };
+  /** A small thing lying about that you can pick up for a side path, with a glint so it catches the eye. */
+  const lying = (id: string, x: number, z: number, obj: THREE.Object3D, gone: () => boolean, label = "Pick up") => {
+    const g = new THREE.Group();
+    g.position.set(x, 0, z);
+    g.add(obj);
+    const glint = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: "#fff4c0", transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false }));
+    glint.scale.setScalar(0.35);
+    glint.position.y = 0.12;
+    g.add(glint);
+    scene.add(g);
+    const spot: Spot = { id, label, x, z, range: 1.2, standX: x, standZ: z + 0.7, tapTargets: [obj] };
+    const item = { group: g, glint, spot };
+    if (gone()) g.visible = false;
+    else spots.push(spot);
+    return item;
+  };
+  const take = (item: { group: THREE.Group; spot: Spot }) => {
+    item.group.visible = false;
+    const i = spots.indexOf(item.spot);
+    if (i >= 0) spots.splice(i, 1);
+  };
+
+  // Della's borrowed pie tin, on the step by her door
+  const tinMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.13, 0.05, 14), new THREE.MeshStandardMaterial({ color: "#b8b4ac", metalness: 0.6, roughness: 0.35 }));
+  tinMesh.position.y = 0.03;
+  const pieTin = lying("tin", doorX - 0.2, COTTAGE.z + 1.35, tinMesh, () => q("goodbye:tin:got"));
+
+  // Mr. Oakes's spectacles, dropped in the grass by the well
+  const SPECS = lanePoint(13.5, -2.4);
+  const specsMesh = new THREE.Group();
+  const wire = new THREE.MeshStandardMaterial({ color: "#c9a64a", metalness: 0.7, roughness: 0.3 });
+  for (const s of [-1, 1]) {
+    const lens = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.008, 4, 14), wire);
+    lens.rotation.x = -Math.PI / 2;
+    lens.position.set(s * 0.055, 0.012, 0);
+    specsMesh.add(lens);
+  }
+  const specs = lying("specs", SPECS.x, SPECS.z, specsMesh, () => q("goodbye:specs:got"));
+
+  // The mice's kettle: a silver thimble, lost in the grass of Della's yard
+  const thimbleMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.035, 0.06, 10), new THREE.MeshStandardMaterial({ color: "#d8dde2", metalness: 0.8, roughness: 0.25 }));
+  thimbleMesh.position.y = 0.03;
+  const thimble = lying("thimble", -2.5, 3.6, thimbleMesh, () => q("thimble:found"));
+
+  // A tiny door at the foot of the Millers' cottage, where the mice live
+  const MILLERS = lanePoint(24, -6.4);
+  const MOUSE = lanePoint(25.3, -4.25);
+  const mouseDoor = new THREE.Group();
+  const md = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.02, 12, 1, false, 0, Math.PI), flat("#7a3e2a"));
+  md.rotation.x = Math.PI / 2;
+  md.rotation.z = Math.PI / 2;
+  const mdBottom = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.02), flat("#7a3e2a"));
+  mdBottom.position.y = 0.05;
+  md.position.y = 0.1;
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), new THREE.MeshStandardMaterial({ color: "#e0c060", metalness: 0.6, roughness: 0.3 }));
+  knob.position.set(0.04, 0.07, 0.015);
+  const step = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.02, 0.08), flat("#9a958c"));
+  step.position.set(0, 0.01, 0.04);
+  const doorLamp = new THREE.Mesh(new THREE.SphereGeometry(0.015, 6, 4), new THREE.MeshBasicMaterial({ color: "#ffd77a" }));
+  doorLamp.position.set(-0.11, 0.17, 0.02);
+  mouseDoor.add(md, mdBottom, knob, step, doorLamp);
+  mouseDoor.position.set(MOUSE.x, 0, MOUSE.z);
+  // face away from the house, toward the lane
+  mouseDoor.rotation.y = Math.atan2(MOUSE.x - MILLERS.x, MOUSE.z - MILLERS.z);
+  scene.add(mouseDoor);
+  const away = { x: MOUSE.x - MILLERS.x, z: MOUSE.z - MILLERS.z };
+  const al = Math.hypot(away.x, away.z);
+  spots.push({ id: "mousedoor", label: "Knock", x: MOUSE.x, z: MOUSE.z, range: 1.3, standX: MOUSE.x + (away.x / al) * 0.8, standZ: MOUSE.z + (away.z / al) * 0.8, tapTargets: [mouseDoor] });
+
+  /** Using things for the side paths. Returns a note, or null when there's nothing special to say. */
+  const usePath = (id: string): string | null => {
+    switch (id) {
+      case "tin":
+        take(pieTin);
+        setQ("goodbye:tin:got");
+        return "Della's borrowed pie tin. \"Take that back to Mrs. Tansy on your way,\" Della calls. \"I've had it since the blackberries.\"";
+      case "specs":
+        take(specs);
+        setQ("goodbye:specs:got");
+        return "A pair of round spectacles in the grass, a little bent. Mr. Oakes was looking for these all week.";
+      case "thimble":
+        take(thimble);
+        setQ("thimble:found");
+        return q("thimble:heard")
+          ? "A silver thimble in the grass. That must be the mice's kettle!"
+          : "A tiny silver thimble in the grass. Far too small for anyone you know. Someone very small must be missing it.";
+      case "tansy":
+        if (q("goodbye:tin:got") && !q("goodbye:tin")) {
+          setQ("goodbye:tin");
+          return "Mrs. Tansy takes the pie tin and laughs. \"I'd given it up for lost! Off on the trail, are you? Go well, and come back hungry.\"";
+        }
+        if (!q("goodbye:tin")) return "The Tansys' cottage. A pie cools on the sill. Mrs. Tansy waves: \"Della's still got my pie tin, you know!\"";
+        return null;
+      case "oakes":
+        if (q("goodbye:specs:got") && !q("goodbye:specs")) {
+          setQ("goodbye:specs");
+          return "Mr. Oakes puts his spectacles on and blinks at you. \"Well! Now I can see who's leaving us. Mind the fog, young one. It always lifts.\"";
+        }
+        if (!q("goodbye:specs")) return "Old Mr. Oakes squints at you from his window. \"Is that you? I've lost my spectacles. Had them at the well, I'm sure of it.\"";
+        return null;
+      case "millers":
+        if (!q("goodbye:letter")) {
+          setQ("goodbye:letter");
+          return "Mrs. Miller dusts the flour off her hands and gives you a letter. \"For Pell, on the mill road. Show it and they'll know you're a friend.\"";
+        }
+        return null;
+      case "mousedoor":
+        if (q("thimble:done")) return "The tiny door. Through the keyhole: a thimble kettle steaming on a matchbox stove. Someone is humming.";
+        if (q("thimble:found")) {
+          setQ("thimble:heard", "thimble:done");
+          return "You set the thimble on the tiny step. The door flies open, a whiskered nose appears, and the thimble vanishes inside. A moment later a scrap of paper is pushed out: a tiny drawing of a stone bridge.";
+        }
+        setQ("thimble:heard");
+        return "You knock very gently. A tiny voice: \"Oh! Have you seen our kettle? It's silver, with dimples. We think it rolled toward Della's garden.\"";
+    }
+    return null;
+  };
+
   // ---------- the traveler ----------
   const traveler = makePerson(look);
   scene.add(traveler.root);
@@ -902,6 +1027,8 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
     ready,
     pick: (spot, toward) => pickables.pick(spot, toward),
     use(spot) {
+      const path = usePath(spot.id);
+      if (path !== null) return path;
       switch (spot.id) {
         case "appletree": {
           if (!has("stick") || gather.picked["leg1:knock"] === today) return null;
@@ -955,6 +1082,13 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
         if (s.id === "secret:stone" || s.id === "secret:log") s.label = has("stick") && !found(s.id.replace("secret:", "leg1:")) ? "Tap" : "Look";
         if (s.id === "secret:chalk") s.label = has("lantern") && !found("leg1:chalk") ? "Shine" : "Look";
       }
+      for (const s of spots) {
+        if (s.id === "tansy") s.label = q("goodbye:tin:got") && !q("goodbye:tin") ? "Give" : "Look";
+        if (s.id === "oakes") s.label = q("goodbye:specs:got") && !q("goodbye:specs") ? "Give" : "Look";
+        if (s.id === "millers") s.label = q("goodbye:letter") ? "Look" : "Knock";
+        if (s.id === "mousedoor") s.label = q("thimble:found") && !q("thimble:done") ? "Give" : q("thimble:done") ? "Look" : "Knock";
+      }
+      for (const it of [pieTin, specs, thimble]) (it.glint.material as THREE.SpriteMaterial).opacity = 0.45 + Math.sin(time * 3 + it.spot.x) * 0.3;
       if (stoneRoll > 0 && stoneRoll < 1) {
         stoneRoll = Math.min(1, stoneRoll + dt * 1.5);
         oddStone.position.x = STONE.x + stoneRoll * 0.55;

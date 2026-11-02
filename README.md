@@ -90,6 +90,18 @@ latched from the lane side: find it from the lane and **Unlatch** it for a
 shortcut. Everything you find is kept in the save (`tools`, `keepsake`,
 `firstLine`, `secrets`, `shortcuts`) and backed up with the journal.
 
+**Found recipes, side paths and cards:** gather thyme, chives and sage and
+you find Della's herb skillet bread, a real recipe that shows up in the
+journal's Meals page and the satchel's card album (`src/journal/recipes.ts`).
+Leg 1's side paths are always open and never need a log: Della's hens (find 3
+eggs), goodbyes in the lane (the Tansys' pie tin, Mr. Oakes's spectacles, the
+Millers' letter for Pell), the mice's lost kettle (a tiny door by the Millers'
+cottage), and Della's chalk mark. They're defined in `src/trail/paths.ts` and
+listed on the satchel's Progress page. Place and critter cards (Della's Hens,
+Lowmeadow Neighbors, Della's Cottage) are in `TRAIL_CARDS`; each one pops up
+big when you earn it. Leg 2 opens after 3 logged days in a week (the Progress
+page counts them); it's the next thing to build.
+
 Add `?from=leg1` to the address (dev server) to start right in Leg 1.
 
 ## Play it

@@ -32,6 +32,12 @@ export interface Save {
   shortcuts: string[];
   /** One-time conversations you've had, like "della:firstCamp". */
   talks: string[];
+  /** Recipes found on the trail, like "bread" (the starters are always known). */
+  recipes: string[];
+  /** Place and critter cards you've earned, like "hens". */
+  cards: string[];
+  /** Side path steps you've done, like "goodbye:tin" (see trail/paths.ts). */
+  quests: string[];
   /** When this last changed (ms), for syncing. */
   updated?: number;
 }
@@ -53,6 +59,9 @@ const fresh = (): Save => ({
   secrets: [],
   shortcuts: [],
   talks: [],
+  recipes: [],
+  cards: [],
+  quests: [],
 });
 
 export function loadSave(): Save {

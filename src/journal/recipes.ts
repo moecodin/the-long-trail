@@ -22,6 +22,8 @@ export interface Recipe extends Nutrients {
   steps: string[];
   /** In the journal from the start (the rest are found on the trail). */
   starter: boolean;
+  /** For a found recipe: what you gather to find it, and the line when you do. */
+  found?: { herbs: string[]; note: string };
 }
 
 export const RECIPES: Recipe[] = [
@@ -169,22 +171,97 @@ export const RECIPES: Recipe[] = [
     ],
     starter: true,
   },
+  {
+    id: "bread",
+    name: "Della's herb skillet bread",
+    line: "No oven, no waiting. Just a hot pan and a handful of the herb bed.",
+    meal: "Lunch or supper",
+    serves: 4,
+    minutes: "25 min",
+    kcal: 330, protein: 13, carbs: 50, fat: 9, fiber: 2,
+    ingredients: [
+      "2 cups (250 g) plain flour, plus a little for your hands",
+      "1 cup (240 g) plain Greek yogurt",
+      "2 tsp baking powder and ½ tsp salt",
+      "2 tbsp chopped chives",
+      "1 tsp thyme leaves and 4 sage leaves, chopped",
+      "2 tbsp olive oil (1 for the dough, 1 for the pan)",
+    ],
+    steps: [
+      "Mix the flour, baking powder, salt and herbs in a bowl.",
+      "Add the yogurt and 1 tbsp of oil and stir, then knead for a minute into a soft dough.",
+      "Split it into 4 balls and press each one flat, about as thick as your finger.",
+      "Warm a little oil in a pan over medium heat. Cook each bread 3 to 4 minutes a side, until golden and puffed.",
+      "Eat warm, on their own or with soup.",
+    ],
+    starter: false,
+    found: { herbs: ["thyme", "chives", "sage"], note: "Found a recipe! Thyme, chives and sage: that's Della's herb skillet bread. You've watched her make it a hundred times." },
+  },
 ];
 
 export const recipe = (id: string) => RECIPES.find((r) => r.id === id) ?? null;
 
-/** Recipes you have so far: the starters now, found ones once the trail opens. */
-export const knownRecipes = () => RECIPES.filter((r) => r.starter);
+/** Recipes found on the trail so far (the game's save keeps the list; main.ts hands it over). */
+let foundRecipes: () => readonly string[] = () => [];
+export function useFoundRecipes(get: () => readonly string[]) {
+  foundRecipes = get;
+}
+
+/** Recipes you have so far: the starters, then the ones you've found on the trail. */
+export const knownRecipes = () => RECIPES.filter((r) => r.starter || foundRecipes().includes(r.id));
 
 // ---------- the card album ----------
 
 export type CardKind = "recipe" | "place" | "critter";
 
-/** Cards still out on the trail: shown face down in the album with a hint. */
-export const WAITING: { kind: CardKind; hint: string }[] = [
-  { kind: "recipe", hint: "Something warm from Della's kitchen" },
-  { kind: "place", hint: "A place you know by heart" },
-  { kind: "critter", hint: "A friend with a bushy tail" },
+/** A trail card that isn't a recipe: a place or a critter, earned out on the trail. */
+export interface TrailCardFace {
+  id: string;
+  kind: CardKind;
+  name: string;
+  /** One line in the trail's voice. */
+  line: string;
+  /** What the face-down card says before you've found it. */
+  hint: string;
+  /** How you earned it (shown once you have it). */
+  how: string;
+  leg: number;
+}
+
+/** Place and critter cards, in the order you'll likely find them. */
+export const TRAIL_CARDS: TrailCardFace[] = [
+  {
+    id: "hens",
+    kind: "critter",
+    name: "Della's Hens",
+    line: "Clover, Biscuit and Mrs. Peck. They lay wherever they please.",
+    hint: "Three busy ladies who hide their treasures",
+    how: "Found three of the hens' eggs in Della's yard.",
+    leg: 1,
+  },
+  {
+    id: "neighbors",
+    kind: "place",
+    name: "Lowmeadow Neighbors",
+    line: "Three doors, three goodbyes, and a letter in your pocket.",
+    hint: "Say goodbye before you go",
+    how: "Said goodbye to everyone in the lane.",
+    leg: 1,
+  },
+  {
+    id: "cottage",
+    kind: "place",
+    name: "Della's Cottage",
+    line: "A lantern in the window, lit for whoever's out walking.",
+    hint: "A place you know by heart",
+    how: "Walked Leg 1 to the end and made your first camp.",
+    leg: 1,
+  },
 ];
+
+/** Recipe cards still out on the trail, shown face down with a hint until found. */
+export const RECIPE_HINTS: Record<string, string> = {
+  bread: "Something warm from Della's kitchen",
+};
 
 export const KIND_LABEL: Record<CardKind, string> = { recipe: "Recipe", place: "Place", critter: "Critter" };

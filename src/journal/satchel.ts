@@ -12,7 +12,8 @@ import { el, escapeHtml as esc } from "../ui/dom";
 import { live, weekOf, journalDay, type JournalData } from "./data";
 import { doodle } from "./doodles";
 import { trailCard } from "./cards";
-import { KIND_LABEL, WAITING, knownRecipes, recipe } from "./recipes";
+import { KIND_LABEL, RECIPE_HINTS, TRAIL_CARDS, knownRecipes, recipe, type CardKind } from "./recipes";
+import { openPaths, pathDone, type PathSave } from "../trail/paths";
 import "./satchel.css";
 
 export type SatchelPage = "items" | "cards" | "map" | "progress";
@@ -33,13 +34,11 @@ export interface SatchelOptions {
   /** Everything you can gather on the trail, and how many of each you've picked. */
   gathered(): GatheredItem[];
   /** The game's save, read-only. */
-  game(): {
+  game(): PathSave & {
     tools: readonly string[];
     keepsake: string | null;
-    secrets: readonly string[];
     shortcuts: readonly string[];
     legsDone: readonly number[];
-    legsSeen: readonly number[];
   };
   /** The journal's data, to count the days you've logged this week. */
   journal(): JournalData;
@@ -69,18 +68,31 @@ const KEEPSAKES: Record<string, { name: string; line: string; art: string }> = {
 
 /** The trail's first act has six legs; only the ones built so far have names here. */
 const ACT1_LEGS = 6;
-const LEGS: Record<number, { name: string; secrets: string[]; shortcuts: { id: string; name: string }[] }> = {
+/** Logged days in a week that open the next leg of the main trail. */
+const DAYS_TO_OPEN = 3;
+const LEGS: Record<number, { name: string; built?: boolean; secrets: string[]; shortcuts: { id: string; name: string }[] }> = {
   1: {
     name: "Della's yard",
+    built: true,
     secrets: ["leg1:stone", "leg1:log", "leg1:chalk"],
     shortcuts: [{ id: "leg1:gate", name: "Della's back gate" }],
   },
+  2: { name: "The Mill Road", secrets: [], shortcuts: [] },
 };
 
 /** Places on the map, in the map's own 0-100 by 0-60 drawing space. */
 const PLACES: { id: string; name: string; x: number; y: number; leg?: number; about: string }[] = [
   { id: "camp", name: "Your camp", x: 16, y: 49, about: "Where you rest each night. The fire is always waiting." },
   { id: "leg1", name: "Della's yard", x: 38, y: 33, leg: 1, about: "Della's cottage, her herb bed and hens, and the lane north to a clearing." },
+];
+
+/** Things you carry for a side path (handed over, or kept). */
+const CARRIED: { id: string; name: string; art: string; sub: string; about: string; has(q: readonly string[]): boolean }[] = [
+  { id: "tin", name: "Della's pie tin", art: "tin", sub: "To go back to the Tansys", about: "Borrowed for a blackberry pie, months ago. Della says Mrs. Tansy will want it back before you go.", has: (q) => q.includes("goodbye:tin:got") && !q.includes("goodbye:tin") },
+  { id: "specs", name: "Mr. Oakes's spectacles", art: "specs", sub: "To go back to Mr. Oakes", about: "Round, a little bent, and very much missed. He lives in the last cottage in the lane.", has: (q) => q.includes("goodbye:specs:got") && !q.includes("goodbye:specs") },
+  { id: "letter", name: "A letter for Pell", art: "letter", sub: "From the Millers", about: "\"For Pell, at the mill road. They'll know you by it.\" Sealed with a thumbprint of flour.", has: (q) => q.includes("goodbye:letter") },
+  { id: "thimble", name: "A silver thimble", art: "thimble", sub: "Someone's kettle", about: "Far too small for any hand you know. Someone very small must be missing it.", has: (q) => q.includes("thimble:found") && !q.includes("thimble:done") },
+  { id: "mapscrap", name: "Map scrap: the Stone Bridge", art: "map", sub: "A gift from the mice", about: "A tiny drawing of a stone bridge, done in what looks like blackberry ink. The first piece of something bigger.", has: (q) => q.includes("thimble:done") },
 ];
 
 const doodleFor = (id: string) => (id === "chamomile" ? "flower" : id);
@@ -164,7 +176,8 @@ export class Satchel {
     const found = items.filter((i) => i.count > 0);
     const tools = TOOLS.filter((t) => g.tools.includes(t.id));
     const keep = g.keepsake ? KEEPSAKES[g.keepsake] : null;
-    const valid = [...tools.map((t) => `tool:${t.id}`), ...(keep ? ["keepsake"] : []), ...items.map((i) => `item:${i.id}`)];
+    const carried = CARRIED.filter((c) => c.has(g.quests));
+    const valid = [...tools.map((t) => `tool:${t.id}`), ...(keep ? ["keepsake"] : []), ...carried.map((c) => `carry:${c.id}`), ...items.map((i) => `item:${i.id}`)];
     if (!valid.includes(this.itemPick)) this.itemPick = tools.length ? `tool:${tools[0].id}` : found.length ? `item:${found[0].id}` : (valid[0] ?? "");
     const pick = this.itemPick;
     const slot = (id: string, art: string, label: string, on: boolean, empty = false) =>
@@ -179,6 +192,7 @@ export class Satchel {
       <h2>Trail tools</h2>
       <div class="s-slots">${toolSlots}</div>
       ${keep ? `<h2>Keepsake</h2><div class="s-slots">${slot("keepsake", keep.art, keep.name, pick === "keepsake")}</div>` : ""}
+      ${carried.length ? `<h2>Carrying</h2><div class="s-slots">${carried.map((c) => slot(`carry:${c.id}`, c.art, c.name, pick === `carry:${c.id}`)).join("")}</div>` : ""}
       <h2>Gathered</h2>
       <p class="j-date">${found.length ? `${found.reduce((n, i) => n + i.count, 0)} picked on the trail so far` : "Nothing picked yet. Look for a sparkle on the trail"}</p>
       <div class="s-slots">${items
@@ -207,6 +221,11 @@ export class Satchel {
       if (!k) return "";
       return show(k.art, esc(k.name), "Your keepsake from Della's table", `<span class="hand">${esc(k.line)}</span>`, `<p class="j-small j-faint">It sits by your tent at camp.</p>`);
     }
+    if (kind === "carry") {
+      const c = CARRIED.find((x) => x.id === id);
+      if (!c) return "";
+      return show(c.art, esc(c.name), esc(c.sub), esc(c.about));
+    }
     const it = this.opts.gathered().find((x) => x.id === id);
     if (!it) return `<p class="hand j-faint">Tap something on the left to look at it closer.</p>`;
     return it.count
@@ -216,35 +235,57 @@ export class Satchel {
 
   // ---------- cards ----------
 
-  private cardsPages(): [string, string] {
+  /** Every card in the album so far: the ones you have face up, the rest face down with a hint. */
+  private album() {
+    const g = this.opts.game();
     const known = knownRecipes();
-    if (!this.cardPick) this.cardPick = known[0]?.id ?? "";
+    const up = [...known, ...TRAIL_CARDS.filter((c) => g.cards.includes(c.id))];
+    const down: { id: string; kind: CardKind; hint: string }[] = [
+      ...Object.entries(RECIPE_HINTS)
+        .filter(([id]) => !known.some((r) => r.id === id))
+        .map(([id, hint]) => ({ id: `down:${id}`, kind: "recipe" as CardKind, hint })),
+      ...TRAIL_CARDS.filter((c) => !g.cards.includes(c.id)).map((c) => ({ id: `down:${c.id}`, kind: c.kind, hint: c.hint })),
+    ];
+    return { up, down };
+  }
+
+  private cardsPages(): [string, string] {
+    const { up, down } = this.album();
+    if (!this.cardPick || ![...up.map((c) => c.id), ...down.map((d) => d.id)].includes(this.cardPick)) this.cardPick = up[0]?.id ?? "";
     const pick = this.cardPick;
     const grid = [
-      ...known.map((r) => trailCard(r, { picked: r.id === pick })),
-      ...WAITING.map((w, n) => trailCard(null, { waiting: w, n, picked: pick === `waiting-${n}` })),
+      ...up.map((c) => trailCard(c, { picked: c.id === pick })),
+      ...down.map((d) => trailCard(null, { waiting: d, waitingId: d.id, picked: pick === d.id })),
     ].join("");
     const r = recipe(pick);
-    const w = pick.startsWith("waiting-") ? WAITING[Number(pick.slice(8))] : null;
+    const t = TRAIL_CARDS.find((c) => c.id === pick);
+    const w = down.find((d) => d.id === pick);
     const right = r
       ? `<div class="tc-show">${trailCard(r, { big: true, still: true })}
            <div class="tc-about">
              <h2>${esc(r.name)}</h2>
              <p class="j-date">${r.meal} · serves ${r.serves}</p>
-             <p class="j-small j-faint">${r.minutes}</p>
+             <p class="j-small j-faint">${r.minutes}${r.starter ? "" : " · found on the trail"}</p>
              <div class="j-spread"><button class="j-btn small" data-act="open-recipe" data-id="${r.id}">Open in my journal</button></div>
            </div></div>`
-      : w
-        ? `<div class="tc-show">${trailCard(null, { big: true, still: true, waiting: w })}
+      : t
+        ? `<div class="tc-show">${trailCard(t, { big: true, still: true })}
+           <div class="tc-about">
+             <h2>${esc(t.name)}</h2>
+             <p class="j-date">A ${KIND_LABEL[t.kind].toLowerCase()} card · Leg ${t.leg}</p>
+             <p class="j-small j-faint">${esc(t.how)}</p>
+           </div></div>`
+        : w
+          ? `<div class="tc-show">${trailCard(null, { big: true, still: true, waiting: w })}
            <div class="tc-about">
              <h2>Still on the trail</h2>
              <p class="j-date">A ${KIND_LABEL[w.kind].toLowerCase()} card</p>
              <p class="hand">${esc(w.hint)}…</p>
            </div></div>`
-        : "";
+          : "";
     return [
       `<h2>Trail cards</h2>
-       <p class="j-date">${known.length} found so far. Tap one to look closer</p>
+       <p class="j-date">${up.length} found so far. Tap one to look closer</p>
        <div class="tc-grid">${grid}</div>`,
       right,
     ];
@@ -321,7 +362,17 @@ export class Satchel {
       const leg = LEGS[n];
       const state = done ? "done" : n === next && leg ? "here" : "locked";
       const name = leg && (done || g.legsSeen.includes(n) || n === next) ? leg.name : "";
-      const note = done ? "walked" : state === "here" ? (g.legsSeen.includes(n) ? "on the way" : "ready to walk") : n === next ? "coming soon" : "";
+      // the first leg is always open; every leg after needs 3 logged days in a week
+      const open = n === 1 || loggedDays >= DAYS_TO_OPEN;
+      const note = done
+        ? "walked"
+        : n !== next
+          ? ""
+          : !open
+            ? `opens after ${DAYS_TO_OPEN} logged days (${loggedDays} of ${DAYS_TO_OPEN})`
+            : leg?.built
+              ? g.legsSeen.includes(n) ? "on the way" : "ready to walk"
+              : "open! still being built";
       return `<li class="s-leg ${state}"><span class="s-step" aria-hidden="true"></span>
         <span>Leg ${n}${name ? ` · ${esc(name)}` : ""}</span><span class="hand j-faint">${note}</span></li>`;
     }).join("");
@@ -338,14 +389,31 @@ export class Satchel {
       <h2>Found so far</h2>
       <ul class="j-list">
         ${found(knownRecipes().length, null, "Recipes")}
-        ${found(knownRecipes().length, null, "Trail cards")}
+        ${found(this.album().up.length, null, "Trail cards")}
         ${found(g.tools.length, TOOL_SLOTS, "Trail tools")}
         ${found(items.filter((i) => i.count > 0).length, items.length, "Things to gather")}
         ${found(g.secrets.filter((s) => secretsAll.includes(s)).length, secretsAll.length, "Secrets")}
       </ul>
       <h2>Side paths</h2>
-      <p class="j-note j-faint">Side paths are always open, no logging needed. They'll show up here as you find them.</p>`;
+      ${this.sidePaths()}`;
     return [left, right];
+  }
+
+  /** The side paths you've reached, each with its steps ticked off. */
+  private sidePaths() {
+    const g = this.opts.game();
+    const paths = openPaths(g);
+    if (!paths.length) return `<p class="j-note j-faint">Side paths are always open, no logging needed. They'll show up here as you reach them.</p>`;
+    return `<ul class="s-paths">${paths
+      .map((p) => {
+        const done = pathDone(p, g);
+        return `<li class="s-path${done ? " done" : ""}">
+          <p class="s-path-name"><span>${esc(p.name)}</span><span class="hand j-faint">${done ? "done" : `Leg ${p.leg}`}</span></p>
+          ${done ? `<p class="j-small j-faint">${esc(p.reward)}</p>` : `<ul class="s-steps">${p.steps.map((st) => `<li class="${st.done(g) ? "ticked" : ""}">${esc(st.text)}</li>`).join("")}</ul>`}
+        </li>`;
+      })
+      .join("")}</ul>
+      <p class="j-small j-faint">Side paths never need a log, and they wait for you forever.</p>`;
   }
 
   // ---------- taps ----------

@@ -207,3 +207,12 @@ button { font-family: inherit; cursor: pointer; }
 .first-actions { display: flex; gap: 14px; align-items: center; }
 .first-later { background: none; border: none; color: var(--parchment); text-decoration: underline; opacity: 0.8; font-size: 0.95rem; }
 @media (max-height: 430px) { .pick-opt svg { width: 40px; height: 40px; } .pick-line { font-size: 0.8rem; } .pick-inner h2, .first-inner h2 { font-size: 1.15rem; } }
+
+/* a new trail card, shown big for a moment before it goes in the satchel */
+.card-found { position: fixed; z-index: 20; background: rgba(20, 16, 12, 0.88); gap: 8px; text-align: center; padding: 16px calc(var(--safe-right) + 16px) 16px calc(var(--safe-left) + 16px); }
+.card-found .kicker { color: #ffd77a; }
+.card-found-card { width: min(34vh, 180px); animation: card-in 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+.card-found-card .tc { width: 100%; }
+.card-found-line { margin: 0; max-width: 34em; color: #f6ecd8; font-size: 0.95rem; }
+@keyframes card-in { from { transform: translateY(30px) rotate(-8deg) scale(0.7); opacity: 0; } }
+.card-found { --j-hand: "Patrick Hand", "Bradley Hand", cursive; --j-serif: "EB Garamond", Georgia, serif; --j-ink: #3b2a1e; }
