@@ -11,6 +11,7 @@
 import * as THREE from "three";
 import { makePerson, type PersonLook } from "../scene/people";
 import { instanced, model, place, seeded } from "../scene/kits";
+import { applyGroundPaint, fillPatches, groundLit, paintGround, planPatches, type Hug } from "../scene/meadow";
 import { carryTools, dressTraveler } from "./dressTraveler";
 import type { Save } from "../save";
 import { glowTexture, type Area, type Blocker, type Spot } from "./area";
@@ -533,6 +534,9 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       await Promise.all(plantNames.map(async (n) => [n, await model("nature", n)] as const)),
     ) as Record<(typeof plantNames)[number], THREE.Object3D>;
 
+    // grass and clover shade like the ground they grow from (see groundLit)
+    for (const n of ["Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Tall", "Clover_1"] as const) plants[n] = groundLit(plants[n], 1.1);
+
     const rnd = seeded(7);
     const up = new THREE.Vector3(0, 1, 0);
     const groups = new Map<THREE.Object3D, THREE.Matrix4[]>();
@@ -549,46 +553,25 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
     const inGap = (x: number, z: number) => z < 0 && Math.abs(x) < 3.2 + (-z - 9) * 0.25;
 
     // trees: a few close ones, then a thick wood further out
+    const shade: Hug[] = [];
     for (let i = 0; i < 120; i++) {
       const a = rnd() * Math.PI * 2;
       const r = 11 + Math.pow(rnd(), 0.7) * 20;
       const x = Math.sin(a) * r, z = -Math.cos(a) * r;
       if (inGap(x, z)) continue;
       add(trees[Math.floor(rnd() * trees.length)], x, z, 0.75 + rnd() * 0.45);
+      if (r < 16) shade.push({ x, z, r: 2.4 });
     }
     // bushes at the edge of the clearing
+    const hugs: Hug[] = [];
     for (let i = 0; i < 26; i++) {
       const a = rnd() * Math.PI * 2;
       const r = 9.6 + rnd() * 1.6;
       const x = Math.sin(a) * r, z = -Math.cos(a) * r;
       if (inGap(x, z) || busy(x, z, 0.6)) continue;
       add(rnd() < 0.6 ? plants.Bush_Common : plants.Bush_Common_Flowers, x, z, 0.6 + rnd() * 0.35);
-    }
-    // grass, flowers and little things scattered over the clearing
-    const smalls: [THREE.Object3D, number, number][] = [
-      [plants.Grass_Common_Short, 0.32, 60],
-      [plants.Grass_Common_Tall, 0.28, 30],
-      [plants.Grass_Wispy_Tall, 0.28, 25],
-      [plants.Clover_1, 0.3, 18],
-      [plants.Flower_3_Group, 0.28, 12],
-      [plants.Flower_4_Group, 0.26, 12],
-      [plants.Flower_3_Single, 0.3, 10],
-      [plants.Fern_1, 0.09, 10],
-      [plants.Mushroom_Common, 0.45, 6],
-      [plants.Plant_1_Big, 0.22, 6],
-      [plants.Pebble_Round_1, 0.6, 10],
-      [plants.Pebble_Round_3, 0.6, 10],
-    ];
-    for (const [o, s, n] of smalls) {
-      let placed = 0;
-      for (let tries = 0; placed < n && tries < n * 8; tries++) {
-        const a = rnd() * Math.PI * 2;
-        const r = 2 + Math.sqrt(rnd()) * 11;
-        const x = Math.sin(a) * r, z = -Math.cos(a) * r;
-        if (busy(x, z, 0.25)) continue;
-        add(o, x, z, s * (0.8 + rnd() * 0.5));
-        placed++;
-      }
+      hugs.push({ x, z, r: 0.8 });
+      shade.push({ x, z, r: 1.3 });
     }
     // a few big rocks out among the trees
     for (const [o, x, z, s] of [
@@ -599,7 +582,59 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
     ] as const) {
       add(o, x, z, s);
       if (Math.hypot(x, z) < RADIUS + 1) block(x, z, s * 2.6);
+      hugs.push({ x, z, r: s * 2.2 });
     }
+    // grass and flowers grow in clumps: against the tent, the bench, the rocks
+    // and the edge of the clearing, along the path, with open ground between
+    for (const b of blockers) if (Math.hypot(b.x, b.z) > 2.5) hugs.push(b);
+    for (let i = 0; i < 9; i++) for (const side of [-1, 1]) hugs.push({ x: side * 0.95, z: -1.8 - i * 1.15, r: 0.15 });
+    const open = (x: number, z: number) => Math.hypot(x, z) < 11.5 && !busy(x, z, 0.15);
+    const patches = planPatches({
+      rnd,
+      seed: 7,
+      sample: () => {
+        const a = rnd() * Math.PI * 2, r = 2.4 + Math.sqrt(rnd()) * 9.5;
+        return { x: Math.sin(a) * r, z: -Math.cos(a) * r };
+      },
+      ok: open,
+      // the rim of the clearing and the sides of the path are the lushest
+      edge: (x, z) => {
+        const r = Math.hypot(x, z);
+        const rim = THREE.MathUtils.clamp((r - 6.5) / 2.5, 0, 1);
+        const path = z < -1 ? THREE.MathUtils.clamp(1 - Math.abs(Math.abs(x) - 1.3) / 0.6, 0, 1) : 0;
+        return Math.max(rim, path);
+      },
+      hugs,
+      hugCount: 34,
+      openCount: 28,
+    });
+    fillPatches(patches, {
+      rnd,
+      ok: (x, z) => !busy(x, z, 0.1),
+      density: 7,
+      plants: {
+        grass: [[plants.Grass_Common_Short, 0.32, 5], [plants.Grass_Common_Tall, 0.28, 2.5], [plants.Grass_Wispy_Tall, 0.28, 2]],
+        flowers: [[plants.Flower_3_Group, 0.28, 1], [plants.Flower_4_Group, 0.26, 0.6], [plants.Flower_3_Single, 0.3, 0.7]],
+        clover: [[plants.Clover_1, 0.3, 3], [plants.Grass_Common_Short, 0.3, 1]],
+        ferns: [[plants.Fern_1, 0.09, 2], [plants.Plant_1_Big, 0.22, 1], [plants.Mushroom_Common, 0.45, 0.7]],
+        pebbles: [[plants.Pebble_Round_1, 0.6, 1], [plants.Pebble_Round_3, 0.6, 1], [plants.Grass_Common_Short, 0.3, 1]],
+      },
+      add: (o, x, z, s) => add(o, x, z, s),
+    });
+    // a few loners, so it doesn't look planted
+    for (const [o, s, n] of [[plants.Grass_Common_Short, 0.28, 26], [plants.Clover_1, 0.26, 8], [plants.Grass_Wispy_Tall, 0.26, 5], [plants.Pebble_Round_1, 0.6, 6]] as const) {
+      for (let i = 0, tries = 0; i < n && tries < 80; tries++) {
+        const a = rnd() * Math.PI * 2, r = 2.4 + Math.sqrt(rnd()) * 9;
+        const x = Math.sin(a) * r, z = -Math.cos(a) * r;
+        if (busy(x, z, 0.25)) continue;
+        add(o, x, z, s * (0.7 + rnd() * 0.4));
+        i++;
+      }
+    }
+    applyGroundPaint(
+      ground,
+      paintGround({ plane: { width: 120, depth: 120, cx: 0, cz: 0 }, width: 36, depth: 36, cx: 0, cz: 0, patches, shade, seed: 7 }),
+    );
     // stepping stones from the fire up to the trail
     const stones = [plants.RockPath_Round_Small_1, plants.RockPath_Round_Small_2, plants.RockPath_Round_Thin];
     for (let i = 0; i < 9; i++) {

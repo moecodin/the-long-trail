@@ -15,6 +15,7 @@ import { BASE, instanced, loader, model, place, seeded } from "../scene/kits";
 import { glowTexture, outside, type Area, type Blocker, type Capsule, type Spot } from "../camp/area";
 import { carryTools, dressTraveler } from "../camp/dressTraveler";
 import { Pickables, type ItemId } from "./gather";
+import { applyGroundPaint, fillPatches, groundLit, paintGround, planPatches, type Hug } from "../scene/meadow";
 import type { Save } from "../save";
 
 /** What Leg 1 reads and changes in the save, and how to tell the game it changed. */
@@ -790,6 +791,9 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
       THREE.Object3D
     >;
 
+    // grass and clover shade like the ground they grow from (see groundLit)
+    for (const n of ["Grass_Common_Short", "Grass_Common_Tall", "Grass_Wispy_Tall", "Clover_1", "Clover_2"] as const) plants[n] = groundLit(plants[n], 1.1);
+
     const rnd = seeded(17);
     const up = new THREE.Vector3(0, 1, 0);
     const groups = new Map<THREE.Object3D, THREE.Matrix4[]>();
@@ -804,6 +808,7 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
       blockers.some((b) => Math.hypot(x - b.x, z - b.z) < b.r + pad) || spots.some((s) => Math.hypot(x - s.x, z - s.z) < 0.6 + pad);
 
     // woods all around, thick away from the lane, with a few trees right at its edge for shade
+    const shade: Hug[] = [];
     for (let i = 0; i < 520; i++) {
       const x = -38 + rnd() * 76, z = 22 - rnd() * 100;
       const out = outside(walk, x, z);
@@ -812,38 +817,17 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
       if (z > YARD.z + 4 && Math.abs(x) < 16) continue;
       if (out < 6 && rnd() < 0.6) continue; // thinner close in, so the lane feels open
       add(trees[Math.floor(rnd() * trees.length)], x, z, 0.7 + rnd() * 0.45);
+      if (out < 7) shade.push({ x, z, r: 2.4 });
     }
     // hedges and bushes at the edges of the walkable ground
+    const hugs: Hug[] = [];
     for (let i = 0; i < 160; i++) {
       const x = -20 + rnd() * 40, z = 12 - rnd() * 68;
       const out = outside(walk, x, z);
       if (out < 0.5 || out > 2.2 || nearHouse(x, z, 0.3)) continue;
       add(rnd() < 0.6 ? plants.Bush_Common : plants.Bush_Common_Flowers, x, z, 0.55 + rnd() * 0.35);
-    }
-    // grass, clover and flowers everywhere you walk, keeping clear of the pickables
-    const smalls: [THREE.Object3D, number, number][] = [
-      [plants.Grass_Common_Short, 0.32, 160],
-      [plants.Grass_Common_Tall, 0.28, 70],
-      [plants.Grass_Wispy_Tall, 0.28, 60],
-      [plants.Clover_1, 0.3, 40],
-      [plants.Clover_2, 0.3, 30],
-      [plants.Flower_3_Group, 0.28, 30],
-      [plants.Flower_4_Group, 0.26, 30],
-      [plants.Flower_3_Single, 0.3, 20],
-      [plants.Plant_7_Big, 0.35, 14],
-      [plants.Fern_1, 0.09, 30],
-      [plants.Pebble_Round_1, 0.6, 20],
-      [plants.Pebble_Round_3, 0.6, 20],
-    ];
-    for (const [o, s, n] of smalls) {
-      let placed = 0;
-      for (let tries = 0; placed < n && tries < n * 10; tries++) {
-        const x = -14 + rnd() * 28, z = 9 - rnd() * 64;
-        const out = outside(walk, x, z);
-        if (out > 3 || nearHouse(x, z, 0) || taken(x, z, 0.3) || spineDist(x, z) < 0.9) continue;
-        add(o, x, z, s * (0.8 + rnd() * 0.5));
-        placed++;
-      }
+      hugs.push({ x, z, r: 0.7 });
+      shade.push({ x, z, r: 1.2 });
     }
     for (const [o, at, s] of [
       [plants.Rock_Medium_1, lanePoint(17, 3.6), 0.4],
@@ -852,7 +836,59 @@ export function createLeg1(renderer: THREE.WebGLRenderer, look: PersonLook, ctx:
     ] as const) {
       add(o, at.x, at.z, s);
       block(at.x, at.z, s * 2.4);
+      hugs.push({ x: at.x, z: at.z, r: s * 2 });
     }
+    // grass and flowers grow in clumps: along the fence, the lane's edges, the
+    // house walls and the rocks, with open, short grass in between
+    for (let a = FENCE_STEP / 2; a < Math.PI * 2; a += FENCE_STEP / 2) {
+      const x = YARD.x + Math.sin(a) * FENCE_R, z = YARD.z + Math.cos(a) * FENCE_R;
+      if (x > COTTAGE.x + COTTAGE.w / 2 + 0.3) hugs.push({ x, z, r: 0.1 });
+    }
+    for (const h of houses) for (let k = 0; k < 8; k++) hugs.push({ x: h.x + Math.cos(k * 0.8) * (h.r - 0.6), z: h.z + Math.sin(k * 0.8) * (h.r - 0.6), r: 0.4 });
+    hugs.push(...blockers.filter((b) => b.r < 2));
+    const grows = (x: number, z: number) =>
+      outside(walk, x, z) < 3 && !nearHouse(x, z, 0) && !taken(x, z, 0.25) && spineDist(x, z) > 0.95;
+    const patches = planPatches({
+      rnd,
+      seed: 17,
+      sample: () => ({ x: -14 + rnd() * 28, z: 9 - rnd() * 64 }),
+      ok: grows,
+      // the lane's grassy edges and the edge of the walkable ground are the lushest
+      edge: (x, z) => {
+        const lane = THREE.MathUtils.clamp(1 - Math.abs(spineDist(x, z) - 1.7) / 0.8, 0, 1);
+        const rim = THREE.MathUtils.clamp(1 - Math.abs(outside(walk, x, z) + 0.6) / 1.4, 0, 1);
+        return Math.max(lane, rim);
+      },
+      hugs,
+      hugCount: 90,
+      openCount: 60,
+    });
+    fillPatches(patches, {
+      rnd,
+      ok: grows,
+      density: 6,
+      plants: {
+        grass: [[plants.Grass_Common_Short, 0.32, 5], [plants.Grass_Common_Tall, 0.28, 2.5], [plants.Grass_Wispy_Tall, 0.28, 2]],
+        flowers: [[plants.Flower_3_Group, 0.28, 1], [plants.Flower_4_Group, 0.26, 0.6], [plants.Flower_3_Single, 0.3, 0.7]],
+        clover: [[plants.Clover_1, 0.3, 2], [plants.Clover_2, 0.3, 2], [plants.Grass_Common_Short, 0.3, 1]],
+        ferns: [[plants.Fern_1, 0.09, 2], [plants.Plant_7_Big, 0.35, 1]],
+        pebbles: [[plants.Pebble_Round_1, 0.6, 1], [plants.Pebble_Round_3, 0.6, 1], [plants.Grass_Common_Short, 0.3, 1]],
+      },
+      add: (o, x, z, s) => add(o, x, z, s),
+    });
+    // a few loners, so it doesn't look planted
+    for (const [o, s, n] of [[plants.Grass_Common_Short, 0.28, 50], [plants.Clover_1, 0.26, 16], [plants.Pebble_Round_1, 0.6, 14]] as const) {
+      for (let i = 0, tries = 0; i < n && tries < n * 10; tries++) {
+        const x = -14 + rnd() * 28, z = 9 - rnd() * 64;
+        if (!grows(x, z)) continue;
+        add(o, x, z, s * (0.7 + rnd() * 0.4));
+        i++;
+      }
+    }
+    applyGroundPaint(
+      ground,
+      paintGround({ plane: { width: 150, depth: 150, cx: 0, cz: -22 }, width: 40, depth: 72, cx: 0, cz: -23, patches, shade, seed: 17 }),
+    );
     for (const [o, list] of groups) kit.add(instanced(o, list));
     await Promise.all([people, dellaReady]);
   }
