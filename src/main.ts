@@ -21,7 +21,8 @@ import { doodleArt } from "./journal/doodles";
 import { RECIPES, TRAIL_CARDS, useFoundRecipes } from "./journal/recipes";
 import { trailCard } from "./journal/cards";
 import { startCamp, type CampSession } from "./camp/play";
-import { createCamp } from "./camp/camp";
+import { createCamp, FROM_TENT } from "./camp/camp";
+import { createTentInside } from "./camp/tent";
 import { createLeg1 } from "./trail/leg1";
 import { ITEMS, pickNote, recordPick, type ItemId } from "./trail/gather";
 import { clockDay } from "./journal/data";
@@ -380,7 +381,7 @@ async function dellaInTheDoorway(name: string) {
 
 // ---------- camp and the trail ----------
 
-type Place = "camp" | "leg1";
+type Place = "camp" | "tent" | "leg1";
 /** Where you're walking around right now. */
 let here: Place = "camp";
 /** Just inside camp's north edge, by the trail sign, facing the fire: where you arrive back from the trail. */
@@ -565,7 +566,12 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
     renderer: world.renderer,
     canvas,
     look: lookFor(t),
-    build: where === "camp" ? (r, look) => createCamp(r, look, save) : (r, look) => createLeg1(r, look, { save, today, changed: saveChanged }),
+    build:
+      where === "camp"
+        ? (r, look) => createCamp(r, look, save)
+        : where === "tent"
+          ? (r, look) => createTentInside(r, look, save)
+          : (r, look) => createLeg1(r, look, { save, today, changed: saveChanged }),
     startAt: opts.startAt,
     onFirstMove: () => hint?.(),
     tick: () => audio.tick(),
@@ -599,7 +605,7 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
   updatePause();
   mode = "camp";
   audio.setRain(0, 2);
-  audio.setMusicVolume(where === "camp" ? 0.4 : 0.5, 3);
+  audio.setMusicVolume(where === "leg1" ? 0.5 : where === "tent" ? 0.3 : 0.4, 3);
   if (where !== "camp") audio.setFire(0, 1);
   // a beat for the first frame to draw before the fade lifts
   await new Promise((r) => setTimeout(r, 300));
@@ -624,6 +630,10 @@ async function leave(exit: string) {
         writeSave(save);
       }
       await enter("leg1", { card: first ? ["Leg 1", "The Lantern in the Window"] : undefined });
+    } else if (exit === "exit:tent") {
+      await enter("tent");
+    } else if (exit === "exit:outside") {
+      await enter("camp", { startAt: FROM_TENT });
     } else if (exit === "exit:back") {
       await enter("camp", { startAt: FROM_TRAIL });
     } else if (exit === "exit:camp") {
@@ -685,6 +695,7 @@ async function start() {
     return goToCamp(false);
   }
   if (from === "leg1" && save.traveler) return enter("leg1");
+  if (from === "tent" && save.traveler) return enter("tent");
   if (from === "mirror") {
     mode = "scene";
     jumpToMirror();

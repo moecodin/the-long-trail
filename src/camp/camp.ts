@@ -10,7 +10,7 @@
 
 import * as THREE from "three";
 import { makePerson, type PersonLook } from "../scene/people";
-import { instanced, model, place, seeded } from "../scene/kits";
+import { BASE, instanced, loader, model, place, seeded } from "../scene/kits";
 import { applyGroundPaint, fillPatches, groundLit, paintGround, planPatches, type Hug } from "../scene/meadow";
 import { carryTools, dressTraveler } from "./dressTraveler";
 import type { Save } from "../save";
@@ -28,10 +28,6 @@ const NOTES: Record<string, string[]> = {
   fire: [
     "Sparks drift up toward the first stars.",
     "Della's kindling, dry as a bone. She thinks of everything.",
-  ],
-  tent: [
-    "Your tent. Old canvas, a little patched, but it kept the storm out.",
-    "Your bedroll is unrolled and waiting.",
   ],
   supplies: [
     "Apples, a coil of rope and a barrel of water. Della packed more than you'll need.",
@@ -84,6 +80,20 @@ function signTexture(): THREE.Texture {
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
+
+/** Where the tent stands at camp, and which way its opening faces (toward the fire and the camera). */
+const TENT = { x: -3.7, z: -2.3 };
+const TENT_FACING = 0.75;
+/** How wide the tent model is drawn, and how it's turned so its door faces out. */
+const TENT_WIDTH = 3.0;
+const TENT_TURN = Math.PI;
+/** How far the tent reaches from its middle toward the door (the model is about 3.4 m long). */
+const TENT_HALF = 1.7;
+/** Just outside the tent's flaps, facing out: where you come back out to camp. */
+export const FROM_TENT = (() => {
+  const d = TENT_HALF + 0.7;
+  return { x: TENT.x + Math.sin(TENT_FACING) * d, z: TENT.z + Math.cos(TENT_FACING) * d, facing: TENT_FACING };
+})();
 
 /** What camp shows of your progress: your keepsake, and the tools you carry. */
 export type CampSave = Pick<Save, "keepsake" | "tools">;
@@ -236,13 +246,13 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   };
 
   // ---------- the tent (hand-built: the kits don't have one) ----------
-  const TENT = { x: -3.7, z: -2.3 };
-  const tentFacing = 0.75; // the opening faces the fire and the camera
+  const tentFacing = TENT_FACING;
   const tent = new THREE.Group();
   tent.position.set(TENT.x, 0, TENT.z);
   tent.rotation.y = tentFacing;
   scene.add(tent);
-  block(TENT.x, TENT.z, 1.35);
+  // two round blockers along the tent's length, so you walk around its long sides
+  for (const t of [-0.8, 0.8]) block(TENT.x + Math.sin(TENT_FACING) * t, TENT.z + Math.cos(TENT_FACING) * t, 1.2);
   const canvas = new THREE.MeshStandardMaterial({ color: "#e6d4ac", roughness: 0.95, side: THREE.DoubleSide });
   const pole = flat("#6b4a2c");
   const TW = 2.1, TH = 1.55, TD = 2.3;
@@ -296,8 +306,9 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   const pillow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.3), flat("#e8dcc0"));
   pillow.position.set(0, 0.12, -0.85);
   tent.add(pillow);
-  const tentFront = new THREE.Vector3(0, 0, TD / 2 + 0.7).applyAxisAngle(new THREE.Vector3(0, 1, 0), tentFacing);
-  spots.push({ id: "tent", label: "Look", x: TENT.x, z: TENT.z, range: 2.3, standX: TENT.x + tentFront.x, standZ: TENT.z + tentFront.z, tapTargets: [tent] });
+  const tentFront = new THREE.Vector3(0, 0, TENT_HALF + 0.7).applyAxisAngle(new THREE.Vector3(0, 1, 0), tentFacing);
+  // the tent: walk in through the open flaps (see tent.ts)
+  spots.push({ id: "exit:tent", label: "Go in", x: TENT.x, z: TENT.z, range: 2.9, standX: TENT.x + tentFront.x, standZ: TENT.z + tentFront.z, tapTargets: [tent] });
 
   // ---------- the bench by the fire ----------
   const BENCH = { x: 2.15, z: 0.25 };
@@ -482,6 +493,32 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       console.warn("Bonfire model did not load; keeping the hand-built fire.", err);
     }
 
+    // the tent: "Stylized Low-Poly Medieval Camping Tent" by PedroDev (CC BY 4.0,
+    // see CREDITS.md), thinned for phones by tools/prepare-tent.mjs. It's
+    // centered on the hand-built tent's spot and scaled to the same footprint.
+    try {
+      const g = await loader.loadAsync(`${BASE}camp/Tent.glb`);
+      const t = g.scene;
+      t.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh) m.castShadow = m.receiveShadow = true;
+      });
+      const box = new THREE.Box3().setFromObject(t);
+      const size = box.getSize(new THREE.Vector3());
+      const mid = box.getCenter(new THREE.Vector3());
+      const holder = new THREE.Group();
+      t.position.set(-mid.x, -box.min.y, -mid.z);
+      holder.add(t);
+      const s = TENT_WIDTH / size.x;
+      holder.scale.setScalar(s);
+      holder.rotation.y = TENT_TURN;
+      tent.add(holder);
+      tent.children.filter((c) => c !== holder).forEach((c) => (c.visible = false));
+      spots.find((sp) => sp.id === "exit:tent")!.tapTargets.push(t);
+    } catch (err) {
+      console.warn("Tent model did not load; keeping the hand-built tent.", err);
+    }
+
     // the bench: the kit's is long, so it's shortened to fit two people
     kit.add(place(kitBench, BENCH.x, 0, BENCH.z, Math.PI / 2, [0.75, 0.85, 0.95]));
     seat.y = 0.45;
@@ -493,7 +530,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
     kit.add(place(kitCrate, SUPPLY.x + 0.2, 0, SUPPLY.z + 0.9, 0.3, 0.6));
     kit.add(place(apples, SUPPLY.x + 0.2, 0.68, SUPPLY.z + 0.9, 0.5, 0.9));
     kit.add(place(rope, SUPPLY.x + 0.75, 0, SUPPLY.z - 0.3, 1.2));
-    kit.add(place(bag, TENT.x + 1.35, 0, TENT.z + 0.15, 0.9, 0.8));
+    kit.add(place(bag, TENT.x + 2.15, 0, TENT.z + 0.7, 0.9, 0.8));
     barrel.visible = crate.visible = false;
     spots.find((s) => s.id === "supplies")!.tapTargets.push(kitBarrel, kitCrate, apples);
     // the cooking spot: a pot and a water bucket by the fire

@@ -1,0 +1,7 @@
+Model: "Stylized Low-Poly Medieval Camping Tent"
+Author: PedroDev (https://sketchfab.com/PedroDev)
+Source: https://sketchfab.com/3d-models/stylized-low-poly-medieval-camping-tent-35d8c209a72343668b51ff85e498db58
+License: CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+Changes: merged duplicate data, simplified from about 60,800 to 24,200 triangles,
+and packed smaller for phones (tools/prepare-tent.mjs). Shape and colors unchanged.
