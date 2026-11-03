@@ -16,11 +16,12 @@ import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
 import { Sync } from "./journal/sync";
-import { campHint, cardFound, chapterCard, creationScreen, pickKeepsake, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
+import { campHint, cardFound, chapterCard, creationScreen, nameFox, pickKeepsake, pickOne, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
 import { doodleArt } from "./journal/doodles";
 import { RECIPES, TRAIL_CARDS, useFoundRecipes } from "./journal/recipes";
 import { trailCard } from "./journal/cards";
 import { startCamp, type CampSession } from "./camp/play";
+import { startFoxMeeting } from "./camp/foxMeeting";
 import { createCamp, FROM_TENT } from "./camp/camp";
 import { createTentInside } from "./camp/tent";
 import { createLeg1 } from "./trail/leg1";
@@ -94,7 +95,7 @@ const { journal, satchel } = mountSatchel({
     game: () => save,
   },
   firstLine: () => save.firstLine || null,
-  onRested: () => camp?.note("You bank the fire and crawl into your tent. The day is written down. Goodnight."),
+  onRested: () => camp?.note(restedLine()),
 });
 // The online backup (only does anything once you've signed in from the journal).
 // The Claude preview link can't reach Supabase, so it leaves the backup out.
@@ -116,6 +117,7 @@ const sync = new Sync(journal, {
       recipes: save.recipes,
       cards: save.cards,
       quests: save.quests,
+      fox: save.fox,
     },
     updated: save.updated ?? 0,
   }),
@@ -381,6 +383,22 @@ async function dellaInTheDoorway(name: string) {
 
 // ---------- camp and the trail ----------
 
+/** What you see as you turn in for the night. The first night with your fox, he ends up in your boot. */
+function restedLine(): string {
+  const fox = save.fox?.name;
+  if (!fox) return "You bank the fire and crawl into your tent. The day is written down. Goodnight.";
+  if (!save.talks.includes("fox:boot")) {
+    save.talks.push("fox:boot");
+    writeSave(save);
+    sync.schedule();
+    return `You bank the fire and crawl into your tent. In the morning, ${fox} is asleep in your spare boot. He doesn't look like he's leaving.`;
+  }
+  return `You bank the fire and crawl into your tent. ${fox} is already asleep at your feet. Goodnight.`;
+}
+
+/** The little scene where you meet your fox (only until you have). */
+let meeting: ReturnType<typeof startFoxMeeting> | null = null;
+
 type Place = "camp" | "tent" | "leg1";
 /** Where you're walking around right now. */
 let here: Place = "camp";
@@ -476,6 +494,7 @@ async function dellaGifts() {
   const name = save.traveler?.name ?? "traveler";
   camp?.setPaused(true);
   try {
+    await dellaMeetsFox(name);
     await say("Della", `There you are, ${name}. Before you go, these are yours, properly now.`);
     await say("Della", "My lantern. It lights what the dark hides. Chalk marks too, if you know where to look.");
     await say("Della", "And the walking stick. Tap things with it. Half of this valley is hollower than it looks.");
@@ -504,6 +523,25 @@ async function dellaGifts() {
   camp?.note("You have the walking stick and the lantern. Tap odd-looking things with the stick, and shine the lantern into dark places.");
 }
 
+/**
+ * The first time Della sees your fox. She walked the trail once, long ago,
+ * with a fox of her own (the story outline's backstory: yours is that fox's
+ * grandkit, though nobody knows it yet). Returns true if it played.
+ */
+async function dellaMeetsFox(name: string): Promise<boolean> {
+  const fox = save.fox?.name;
+  if (!fox || save.talks.includes("della:fox")) return false;
+  await say("Della", "And who's this muddy little thing at your heels?");
+  await say(name, `This is ${fox}. He came out of the trees after the storm.`, YOU);
+  await say("Della", "A fox. Well, well.");
+  await say("Della", "I walked with a fox once, you know. A long time ago. She came with me as far as the Stone Bridge.");
+  await say(name, "What happened to her?", YOU);
+  await say("Della", `Oh, that's a story for another day. Keep ${fox} fed, and he'll keep you company.`);
+  save.talks.push("della:fox");
+  saveChanged();
+  return true;
+}
+
 /** Della's tips for the road, one per chat, taken in turn. */
 const DELLA_TIPS = [
   "Fill your satchel before you go. The herb bed's full and the hens have been busy.",
@@ -525,6 +563,7 @@ async function dellaChat() {
   const name = save.traveler?.name ?? "traveler";
   camp?.setPaused(true);
   try {
+    if (await dellaMeetsFox(name)) return;
     if (save.legsDone.includes(1) && !save.talks.includes("della:firstCamp")) {
       await say("Della", "You made your first camp! How was it?");
       await say(name, "I could walk forever.", YOU);
@@ -551,6 +590,8 @@ async function goToCamp(firstTime: boolean) {
  */
 async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, string]; startAt?: { x: number; z: number; facing: number } } = {}) {
   fadeBlack(true);
+  meeting?.dispose();
+  meeting = null;
   if (camp) {
     await new Promise((r) => setTimeout(r, 700));
     camp.dispose();
@@ -577,7 +618,11 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
     tick: () => audio.tick(),
     onRest: () => journal.open("rest"),
     onExit: (id) => void leave(id),
+    // He's a kit all through Act 1 (the story outline grows him once per act).
+    fox: { stage: "kit", hidden: !save.fox },
     onUse: (spot) => {
+      const m = meeting?.use(spot);
+      if (m != null) return m;
       if (spot.id === "della" && !save.tools.includes("stick")) {
         void dellaGifts();
         return "";
@@ -601,6 +646,24 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
       return pickNote(id, n);
     },
   });
+  if (where === "camp" && !save.fox) {
+    const session = camp;
+    meeting = startFoxMeeting({
+      session,
+      name: save.traveler!.name,
+      say,
+      pickOne,
+      nameFox,
+      card: chapterCard,
+      pause: () => session.setPaused(true),
+      resume: () => updatePause(),
+      done: (fox) => {
+        save.fox = fox;
+        saveChanged();
+        session.refresh();
+      },
+    });
+  }
   await camp.ready;
   updatePause();
   mode = "camp";

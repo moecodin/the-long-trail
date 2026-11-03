@@ -38,6 +38,8 @@ export interface Save {
   cards: string[];
   /** Side path steps you've done, like "goodbye:tin" (see trail/paths.ts). */
   quests: string[];
+  /** Your fox, once you've met him at camp (see camp/foxMeeting.ts). How you first said hello flavors his mood lines. */
+  fox: { name: string; hello: "apple" | "still" | "soft" | "alone" } | null;
   /** When this last changed (ms), for syncing. */
   updated?: number;
 }
@@ -62,6 +64,7 @@ const fresh = (): Save => ({
   recipes: [],
   cards: [],
   quests: [],
+  fox: null,
 });
 
 export function loadSave(): Save {

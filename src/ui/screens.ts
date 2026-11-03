@@ -194,12 +194,17 @@ export interface KeepsakeChoice {
 
 /** Three things on Della's table; tap one to take it. */
 export function pickKeepsake(choices: KeepsakeChoice[]): Promise<string> {
+  return pickOne("Della's table", "Take one thing to remember Lowmeadow by", choices);
+}
+
+/** A few choices drawn as little ink cards; tap one. Resolves with its id. */
+export function pickOne(kicker: string, title: string, choices: KeepsakeChoice[]): Promise<string> {
   const node = el(
     "div",
     "overlay pick-card",
     `<div class="pick-inner">
-      <p class="kicker">Della's table</p>
-      <h2>Take one thing to remember Lowmeadow by</h2>
+      <p class="kicker">${escapeHtml(kicker)}</p>
+      <h2>${escapeHtml(title)}</h2>
       <div class="pick-row">${choices
         .map(
           (c) => `<button class="pick-opt" data-id="${escapeHtml(c.id)}">
@@ -258,6 +263,36 @@ export function writeFirstLine(name: string, suggestions: string[]): Promise<str
       done(input.value);
     });
     node.querySelector(".first-later")!.addEventListener("click", () => done(""));
+  });
+}
+
+// ---------- naming your fox ----------
+
+/** "What will you call him?" Ember is filled in; tap a suggestion or type your own. */
+export function nameFox(suggestions: string[]): Promise<string> {
+  const node = el(
+    "div",
+    "overlay first-page",
+    `<form class="first-inner">
+      <p class="kicker">He seems to have decided to stay</p>
+      <h2>What will you call him?</h2>
+      <div class="first-sugs">${suggestions.map((s) => `<button type="button" class="first-sug">${escapeHtml(s)}</button>`).join("")}</div>
+      <input name="name" maxlength="16" autocomplete="off" enterkeyhint="done" value="${escapeHtml(suggestions[0])}">
+      <div class="first-actions"><button class="wood-btn confirm" type="submit">That's his name</button></div>
+    </form>`,
+  );
+  node.addEventListener("pointerup", (e) => e.stopPropagation());
+  show(node);
+  const input = node.querySelector("input")!;
+  node.querySelectorAll<HTMLButtonElement>(".first-sug").forEach((b) => b.addEventListener("click", () => (input.value = b.textContent ?? "")));
+  input.addEventListener("keydown", (e) => e.stopPropagation());
+  return new Promise((resolve) => {
+    node.querySelector("form")!.addEventListener("submit", (e) => {
+      e.preventDefault();
+      input.blur();
+      void hide(node, 600);
+      resolve(input.value.replace(/\s+/g, " ").trim() || suggestions[0]);
+    });
   });
 }
 
