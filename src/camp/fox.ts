@@ -25,8 +25,18 @@ export const FOX_URL: string =
   import.meta.env.VITE_FOX_URL ??
   "https://oearcgsdolpgkhtjapuf.supabase.co/storage/v1/object/public/game-art/fox.glb";
 
-/** How tall the fox stands, in meters (the traveler is about 1.55). */
-const FOX_HEIGHT = 0.82;
+/**
+ * How the fox looks as he grows up, one step per act (see the story outline).
+ * It's the same model every time: smaller, with a bigger head, reads as
+ * younger. Height in meters (the traveler is about 1.55); head is how much
+ * bigger the head is drawn.
+ */
+export const FOX_STAGES = {
+  kit: { height: 0.42, head: 1.45 },
+  young: { height: 0.58, head: 1.25 },
+  grown: { height: 0.82, head: 1 },
+} as const;
+export type FoxStage = keyof typeof FOX_STAGES;
 /** How wide the fox is, for bumping into things. */
 const BODY = 0.22;
 /** It starts to follow when the traveler is farther than this... */
@@ -74,6 +84,19 @@ function walkInPlace(clip: THREE.AnimationClip): number {
 export interface Fox {
   /** Put the fox somewhere right away (no walking). */
   placeAt(x: number, z: number, facing: number): void;
+  /** Show or hide him (before you've met him, he isn't there). */
+  setVisible(visible: boolean): void;
+  readonly visible: boolean;
+  /** Where he is now. */
+  readonly position: THREE.Vector3;
+  /**
+   * Walk to (x, z) and stay there, looking at the traveler, until let go.
+   * Used by little scenes (like meeting him). null lets him follow again.
+   */
+  hold(at: { x: number; z: number } | null): void;
+  readonly held: boolean;
+  /** A quick little hop (a sneeze, or being pleased). */
+  hop(): void;
   /** Follow the traveler at (x, z), who faces `facing` (radians). */
   update(dt: number, x: number, z: number, facing: number, seated: boolean, interest?: { x: number; z: number } | null): void;
 }
@@ -84,7 +107,8 @@ interface FoxWorld {
   walk: Capsule[];
 }
 
-export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL): Promise<Fox> {
+export async function loadFox(loader: GLTFLoader, world: FoxWorld, stage: FoxStage = "grown", url = FOX_URL): Promise<Fox> {
+  const look = FOX_STAGES[stage];
   const gltf = await loader.loadAsync(url);
   const model = gltf.scene;
   model.traverse((o) => {
@@ -94,6 +118,14 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
       m.frustumCulled = false; // skinned meshes can be culled by their bind-pose box
     }
   });
+
+  // A bigger head makes him look younger. The animations only turn the head,
+  // so the size we set stays put.
+  let head: THREE.Object3D | null = null;
+  model.traverse((o) => {
+    if (!head && (o as THREE.Bone).isBone && /Head$/.test(o.name)) head = o;
+  });
+  (head as THREE.Object3D | null)?.scale.setScalar(look.head);
 
   // Size it from the standing pose and stand its feet on the ground.
   const mixer = new THREE.AnimationMixer(model);
@@ -106,7 +138,7 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model, true);
   const holder = new THREE.Group();
-  const scale = FOX_HEIGHT / Math.max(0.01, box.max.y - box.min.y);
+  const scale = look.height / Math.max(0.01, box.max.y - box.min.y);
   model.position.y = -box.min.y;
   holder.add(model);
   holder.scale.setScalar(scale);
@@ -136,6 +168,10 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
   let glanceTo: number | null = null;
   /** Which side of the traveler it likes to walk on: 1 is their left. */
   let side = 1;
+  /** A spot a scene asked him to go to and stay at. */
+  let holdAt: { x: number; z: number } | null = null;
+  /** Time left on a hop. */
+  let hopT = 0;
 
   function step(dx: number, dz: number) {
     pos.x += dx;
@@ -151,12 +187,70 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
     return { x: x - fx * back + lx * out * side, z: z - fz * back + lz * out * side };
   }
 
+  /** Ease to `want` m/s, step that way, turn, and blend the walk and run to match. */
+  function move(dt: number, want: number, busy: boolean) {
+    speed += (want - speed) * Math.min(1, dt * 6);
+    if (speed < 0.03 && want === 0) speed = 0;
+    if (speed > 0) step(Math.sin(facing) * speed * dt, Math.cos(facing) * speed * dt);
+
+    const cur = root.rotation.y;
+    const diff = Math.atan2(Math.sin(facing - cur), Math.cos(facing - cur));
+    root.rotation.y = cur + diff * Math.min(1, dt * (busy ? 10 : 4));
+
+    // blend idle -> walk -> run by speed, and match the feet to the ground speed
+    const runShare = THREE.MathUtils.clamp((speed - WALK) / WALK, 0, 1);
+    const moving = THREE.MathUtils.clamp(speed / 0.4, 0, 1);
+    const target = { idle: 1 - moving, walk: moving * (1 - runShare), run: moving * runShare };
+    const ease = Math.min(1, dt * 8);
+    for (const k of ["idle", "walk", "run"] as const) {
+      weight[k] += (target[k] - weight[k]) * ease;
+      actions[k]?.setEffectiveWeight(weight[k]);
+    }
+    actions.walk?.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / walkCycle, 0.6, 2.6));
+    actions.run?.setEffectiveTimeScale(THREE.MathUtils.clamp(speed / runCycle, 0.6, 2.6));
+    mixer.update(dt);
+    // the hop: up and down in a quick little arc
+    if (hopT > 0) hopT = Math.max(0, hopT - dt);
+    pos.y = Math.sin((hopT / 0.35) * Math.PI) * 0.12 * look.height * 2;
+  }
+
   return {
     placeAt(x, z, f) {
       pos.set(x, 0, z);
       facing = root.rotation.y = f;
     },
+    setVisible(v) {
+      root.visible = v;
+    },
+    get visible() {
+      return root.visible;
+    },
+    position: pos,
+    hold(at) {
+      holdAt = at;
+      following = !!at;
+    },
+    get held() {
+      return !!holdAt;
+    },
+    hop() {
+      hopT = 0.35;
+    },
     update(dt, tx, tz, tf, seated, interest) {
+      if (!root.visible) return;
+      if (holdAt) {
+        // a scene put him somewhere: trot over, then sit tight and watch the traveler
+        const d = Math.hypot(holdAt.x - pos.x, holdAt.z - pos.z);
+        let want = 0;
+        if (d > 0.08) {
+          want = Math.min(WALK * 1.1, d * 1.6 + 0.15);
+          facing = Math.atan2(holdAt.x - pos.x, holdAt.z - pos.z);
+        } else {
+          facing = Math.atan2(tx - pos.x, tz - pos.z);
+        }
+        move(dt, want, d > 0.08);
+        return;
+      }
       // Pick the side of the traveler the fox is already on, so it doesn't cross in front.
       const fx = Math.sin(tf), fz = Math.cos(tf);
       const onLeft = (pos.x - tx) * fz - (pos.z - tz) * fx > 0;
@@ -188,26 +282,7 @@ export async function loadFox(loader: GLTFLoader, world: FoxWorld, url = FOX_URL
         // something odd nearby: the fox stares right at it, ears up, and won't look away
         if (interest && Math.hypot(interest.x - pos.x, interest.z - pos.z) < 4.5) facing = Math.atan2(interest.x - pos.x, interest.z - pos.z);
       }
-      speed += (want - speed) * Math.min(1, dt * 6);
-      if (speed < 0.03 && want === 0) speed = 0;
-      if (speed > 0) step(Math.sin(facing) * speed * dt, Math.cos(facing) * speed * dt);
-
-      const cur = root.rotation.y;
-      const diff = Math.atan2(Math.sin(facing - cur), Math.cos(facing - cur));
-      root.rotation.y = cur + diff * Math.min(1, dt * (following ? 10 : 4));
-
-      // blend idle -> walk -> run by speed, and match the feet to the ground speed
-      const runShare = THREE.MathUtils.clamp((speed - WALK) / WALK, 0, 1);
-      const moving = THREE.MathUtils.clamp(speed / 0.4, 0, 1);
-      const target = { idle: 1 - moving, walk: moving * (1 - runShare), run: moving * runShare };
-      const ease = Math.min(1, dt * 8);
-      for (const k of ["idle", "walk", "run"] as const) {
-        weight[k] += (target[k] - weight[k]) * ease;
-        actions[k]?.setEffectiveWeight(weight[k]);
-      }
-      actions.walk?.setEffectiveTimeScale(Math.max(0.6, speed / walkCycle));
-      actions.run?.setEffectiveTimeScale(Math.max(0.6, speed / runCycle));
-      mixer.update(dt);
+      move(dt, want, following);
     },
   };
 }

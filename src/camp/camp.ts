@@ -55,6 +55,38 @@ const NOTES: Record<string, string[]> = {
   ],
 };
 
+/**
+ * What the traveler says to the fox about camp things, once he's with you.
+ * They take turns with the notes above. {fox} is his name.
+ */
+const FOX_LINES: Record<string, string[]> = {
+  "bench:sit": ["\"Don't sit so close, {fox}. You'll singe your whiskers.\"", "\"You and me and a fire. Not a bad start.\""],
+  tent: ["\"It kept the storm out. It'll keep you out too, {fox}, if you snore.\"", "\"There's room for two. Barely.\""],
+  supplies: ["\"No, {fox}, those are for people. ...Fine. One.\"", "\"Della packed for one traveler. She didn't plan on you.\""],
+  "keepsake:candle": ["\"Della would like you, {fox}. She likes anyone who turns up muddy.\""],
+  "keepsake:flower": ["\"That's Lowmeadow. Where I'm from. Where are you from, I wonder?\""],
+  "keepsake:spoon": ["\"Della used to bang this on the pot to call me in. Want me to try it on you, {fox}?\""],
+  cart: ["\"You'd fit in there, {fox}. Don't get any ideas.\""],
+};
+
+/** Camp's notes, with the traveler's lines to the fox woven in once you've met him. */
+function campNotes(fox: string | null): Record<string, string[]> {
+  const notes: Record<string, string[]> = { ...NOTES, "bench:sit": ["You sit by the fire for a while. It's warm."] };
+  if (!fox) return notes;
+  for (const [id, lines] of Object.entries(FOX_LINES)) {
+    const base = notes[id] ?? [];
+    const said = lines.map((l) => l.replaceAll("{fox}", fox));
+    // look, talk, look, talk...
+    const mixed: string[] = [];
+    for (let i = 0; i < Math.max(base.length, said.length); i++) {
+      if (base[i]) mixed.push(base[i]);
+      if (said[i]) mixed.push(said[i]);
+    }
+    notes[id] = mixed;
+  }
+  return notes;
+}
+
 const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters> = {}) =>
   new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.95, ...extra });
 
@@ -86,7 +118,7 @@ function signTexture(): THREE.Texture {
 }
 
 /** What camp shows of your progress: your keepsake, and the tools you carry. */
-export type CampSave = Pick<Save, "keepsake" | "tools">;
+export type CampSave = Pick<Save, "keepsake" | "tools" | "fox">;
 
 export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save?: CampSave): CampWorld {
   const scene = new THREE.Scene();
@@ -666,13 +698,14 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
     spots,
     walk: [{ ax: 0, az: 0, bx: 0, bz: 0, r: RADIUS }],
     start: { x: 0.4, z: 2.6, facing: Math.PI },
-    notes: NOTES,
+    notes: campNotes(save?.fox?.name ?? null),
     fire: { x: 0, z: 0 },
     seat,
     ready,
     refresh() {
       tools.set(save?.tools ?? []);
       placeKeepsake();
+      camp.notes = campNotes(save?.fox?.name ?? null);
     },
     update(dt, time) {
       if (keepsakeLight) keepsakeLight.intensity = 2.2 + Math.sin(time * 9) * 0.25 + Math.sin(time * 13.7) * 0.2;

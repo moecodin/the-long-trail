@@ -6,7 +6,7 @@ import * as THREE from "three";
 import type { PersonLook } from "../scene/people";
 import { clampWalk, settle, type Area, type Spot } from "./area";
 import { Controls } from "./controls";
-import { loadFox, type Fox } from "./fox";
+import { loadFox, type Fox, type FoxStage } from "./fox";
 import { loader } from "../scene/kits";
 import { el } from "../ui/dom";
 
@@ -55,6 +55,8 @@ export interface CampOptions {
   tick?(): void;
   /** The traveler wants to rest at the campfire (opens the journal's Rest page). */
   onRest?(): void;
+  /** How grown-up the fox is, and whether he's hidden (you haven't met him yet). */
+  fox?: { stage: FoxStage; hidden: boolean };
 }
 
 export interface CampSession {
@@ -72,6 +74,14 @@ export interface CampSession {
   dispose(): void;
   /** Redraw what depends on the save (a new tool, a keepsake...). */
   refresh(): void;
+  /** The place itself (its scene, spots and blockers), for little scenes that add to it. */
+  area: Area;
+  /** Where the traveler is standing. */
+  travelerAt(): THREE.Vector3;
+  /** The fox, once he's loaded (null if he couldn't be). */
+  fox: Promise<Fox | null>;
+  /** Run something every frame while this place is open (paused: the journal or a card is up, or words are on screen). */
+  onFrame(fn: (dt: number, paused: boolean) => void): void;
 }
 
 export function startCamp(opts: CampOptions): CampSession {
@@ -86,13 +96,19 @@ export function startCamp(opts: CampOptions): CampSession {
   // works fine without it if it can't be fetched.
   let fox: Fox | null = null;
   let gone = false;
-  loadFox(loader, camp)
+  const foxReady = loadFox(loader, camp, opts.fox?.stage ?? "grown")
     .then((f) => {
-      if (gone) return;
+      if (gone) return null;
       f.placeAt(pos.x - 0.8, pos.z + 0.6, traveler.root.rotation.y);
+      f.setVisible(!opts.fox?.hidden);
       fox = f;
+      return f;
     })
-    .catch((err) => console.warn("The fox did not load; camp goes on without it.", err));
+    .catch((err) => {
+      console.warn("The fox did not load; camp goes on without it.", err);
+      return null;
+    });
+  const frameFns: ((dt: number, paused: boolean) => void)[] = [];
 
   let paused = false;
   let moved = false;
@@ -282,7 +298,10 @@ export function startCamp(opts: CampOptions): CampSession {
     target = null;
     pos.set(camp.seat.x + 0.05, 0, camp.seat.z);
     facing = camp.seat.facing;
-    showNote("You sit by the fire for a while. It's warm.");
+    const lines = camp.notes["bench:sit"] ?? ["You sit by the fire for a while. It's warm."];
+    const n = noteCount["bench:sit"] ?? 0;
+    noteCount["bench:sit"] = n + 1;
+    showNote(lines[n % lines.length]);
   }
 
   function standUp() {
@@ -341,6 +360,10 @@ export function startCamp(opts: CampOptions): CampSession {
   return {
     ready: camp.ready,
     note: showNote,
+    area: camp,
+    travelerAt: () => pos,
+    fox: foxReady,
+    onFrame: (fn) => void frameFns.push(fn),
     refresh() {
       camp.refresh?.();
     },
@@ -458,7 +481,9 @@ export function startCamp(opts: CampOptions): CampSession {
       focus.lerp(new THREE.Vector3().copy(pos).setY(0), 1 - Math.exp(-dt * 4));
       placeCamera(dt);
 
-      fox?.update(paused ? 0 : dt, pos.x, pos.z, traveler.root.rotation.y, seated, camp.interest?.(pos.x, pos.z) ?? null);
+      for (const fn of frameFns) fn(dt, paused);
+      // a fox in the middle of a little scene keeps moving while the words are up
+      fox?.update(paused && !fox.held ? 0 : dt, pos.x, pos.z, traveler.root.rotation.y, seated, camp.interest?.(pos.x, pos.z) ?? null);
       camp.update(dt, time);
     },
     render() {
