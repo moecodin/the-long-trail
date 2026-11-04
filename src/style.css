@@ -213,6 +213,9 @@ button { font-family: inherit; cursor: pointer; }
 .card-found .kicker { color: #ffd77a; }
 .card-found-card { width: min(34vh, 180px); animation: card-in 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) both; }
 .card-found-card .tc { width: 100%; }
+.loot-big { aspect-ratio: 5 / 7; display: grid; place-items: center; border-radius: 10px; background: #f4ead2; color: var(--j-ink); box-shadow: 0 0 40px rgba(255, 200, 110, 0.45); }
+.loot-doodle { width: 62%; height: auto; }
+.loot-name { margin: 6px 0 0; color: #ffd77a; font-family: var(--j-hand); font-size: 1.3rem; }
 .card-found-line { margin: 0; max-width: 34em; color: #f6ecd8; font-size: 0.95rem; }
 @keyframes card-in { from { transform: translateY(30px) rotate(-8deg) scale(0.7); opacity: 0; } }
 .card-found { --j-hand: "Patrick Hand", "Bradley Hand", cursive; --j-serif: "EB Garamond", Georgia, serif; --j-ink: #3b2a1e; }

@@ -128,7 +128,7 @@ export const FROM_TENT = (() => {
 })();
 
 /** What camp shows of your progress: your keepsake, and the tools you carry. */
-export type CampSave = Pick<Save, "keepsake" | "tools" | "fox">;
+export type CampSave = Pick<Save, "keepsake" | "tools" | "fox" | "loot">;
 
 export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save?: CampSave): CampWorld {
   const scene = new THREE.Scene();
@@ -481,6 +481,52 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   }
   placeKeepsake();
 
+  // ---------- lanterns earned by logging (every 4 lantern sparks, see journal/loot.ts) ----------
+  /** Where each new lantern goes, around the rim of the clearing: angle (0 is north, toward the trail). */
+  const LANTERN_SPOTS = [2.2, -2.2, 1.55, -1.85, 2.7, -2.7, 0.62, -0.62, 3.14, -1.3, 1.95, -2.45];
+  const LANTERN_R = 7.7;
+  const earnedLanterns = new THREE.Group();
+  scene.add(earnedLanterns);
+  const earnedGlows: THREE.Sprite[] = [];
+  const lanternBlockers: Blocker[] = [];
+  let kitLantern: THREE.Object3D | null = null;
+  function placeLanterns() {
+    earnedLanterns.clear();
+    earnedGlows.length = 0;
+    for (const b of lanternBlockers) blockers.splice(blockers.indexOf(b), 1);
+    lanternBlockers.length = 0;
+    const count = Math.min(LANTERN_SPOTS.length, (save?.loot ?? []).filter((l) => l.startsWith("lantern:")).length);
+    for (let i = 0; i < count; i++) {
+      const a = LANTERN_SPOTS[i];
+      const x = Math.sin(a) * LANTERN_R, z = -Math.cos(a) * LANTERN_R;
+      const lp = new THREE.Group();
+      lp.position.set(x, 0, z);
+      // the lantern hangs off the post's inner side, toward the fire
+      lp.rotation.y = Math.PI / 2 - a;
+      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 2.2, 6), signWood);
+      p.position.y = 1.1;
+      p.castShadow = true;
+      lp.add(p);
+      if (kitLantern) {
+        lp.add(place(kitLantern.clone(), 0, 1.25, 0, -Math.PI / 2, 0.75));
+      } else {
+        const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.28, 0.2), new THREE.MeshStandardMaterial({ color: "#ffd890", emissive: "#ffb050", emissiveIntensity: 1.5 }));
+        lamp.position.set(-0.85, 1.55, 0);
+        lp.add(lamp);
+      }
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: "#ffcf80", transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.position.set(-0.85, 1.55, 0);
+      glow.scale.setScalar(1.4);
+      lp.add(glow);
+      earnedGlows.push(glow);
+      earnedLanterns.add(lp);
+      const b = { x, z, r: 0.25 };
+      blockers.push(b);
+      lanternBlockers.push(b);
+    }
+  }
+  placeLanterns();
+
   // a few trees as cones so the clearing has edges before the kits load
   const coneTrees = new THREE.Group();
   const leaf = flat("#3e5e34");
@@ -512,6 +558,8 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       model("village", "Prop_WoodenFence_Single"),
     ]);
     const kit = new THREE.Group();
+    kitLantern = lantern;
+    placeLanterns();
 
     // the campfire: "LowPoly bonfire" by LEX_GFX (CC BY 4.0, see CREDITS.md).
     // Our own light, glow and sparks stay on top of it.
@@ -755,6 +803,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
     refresh() {
       tools.set(save?.tools ?? []);
       placeKeepsake();
+      placeLanterns();
       camp.notes = campNotes(save?.fox?.name ?? null);
     },
     update(dt, time) {
@@ -775,6 +824,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       }
       sparkGeo.attributes.position.needsUpdate = true;
       for (const g of lanternGlows) g.material.opacity = 0.7 + flicker * 0.05;
+      earnedGlows.forEach((g, i) => (g.material.opacity = 0.7 + Math.sin(time * (5 + i) + i * 2) * 0.05));
 
       // the sun's shadows follow the traveler, so they stay sharp near the camera
       const p = traveler.root.position;

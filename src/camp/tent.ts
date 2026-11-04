@@ -16,9 +16,10 @@ import { model, place } from "../scene/kits";
 import { carryTools, dressTraveler } from "./dressTraveler";
 import { glowTexture, type Area, type Blocker, type Capsule, type Spot } from "./area";
 import type { Save } from "../save";
+import { JOURNAL_KEEPSAKES } from "../journal/loot";
 
 /** What the tent shows of your progress. */
-export type TentSave = Pick<Save, "tools" | "firstLine" | "portraitStage">;
+export type TentSave = Pick<Save, "tools" | "firstLine" | "portraitStage" | "loot">;
 
 /** Half the tent's width (x) and depth (z), the side walls' height and the ridge's, in meters. */
 const HW = 2.6;
@@ -332,6 +333,78 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
   block(SHELF.x, SHELF.z + 0.3, 0.32);
   spots.push({ id: "shelf", label: "Look", x: SHELF.x, z: SHELF.z, range: 1.3, standX: SHELF.x - 1.0, standZ: SHELF.z, tapTargets: [shelf] });
 
+  // the journal keepsakes you've earned by logging stand on the two upper shelves
+  const keeps = new THREE.Group();
+  shelf.add(keeps);
+  const KEEP_AT: Record<string, [number, number]> = {
+    "keep:feather": [-0.3, 1],
+    "keep:compass": [0, 1],
+    "keep:bell": [0.3, 1],
+    "keep:jar": [-0.2, 2],
+    "keep:badge": [0.22, 2],
+  };
+  const gold = flat("#c99a3e", { metalness: 0.5, roughness: 0.45 });
+  const jarGlows: THREE.Sprite[] = [];
+  function keepsakeShape(id: string): THREE.Object3D {
+    const g = new THREE.Group();
+    if (id === "keep:feather") {
+      const f = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.3, 5), flat("#4a78c0"));
+      f.scale.z = 0.3;
+      f.position.y = 0.15;
+      f.rotation.z = 0.35;
+      g.add(f);
+    } else if (id === "keep:compass") {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.025, 14), gold);
+      c.rotation.x = Math.PI / 2 - 0.3;
+      c.position.y = 0.08;
+      const face = new THREE.Mesh(new THREE.CircleGeometry(0.06, 14), flat("#efe4c8"));
+      face.position.set(0, 0.085, 0.017);
+      face.rotation.x = -0.3;
+      g.add(c, face);
+    } else if (id === "keep:bell") {
+      const b = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.07, 0.11, 10, 1, true), gold);
+      b.material.side = THREE.DoubleSide;
+      b.position.y = 0.055;
+      const top = new THREE.Mesh(new THREE.SphereGeometry(0.035, 8, 6), gold);
+      top.position.y = 0.11;
+      g.add(b, top);
+    } else if (id === "keep:jar") {
+      const jar = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.06, 0.06, 0.15, 10),
+        new THREE.MeshStandardMaterial({ color: "#dff0c8", emissive: "#c8e27a", emissiveIntensity: 0.9, transparent: true, opacity: 0.85 }),
+      );
+      jar.position.y = 0.075;
+      const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.064, 0.064, 0.025, 10), flat("#8a6a48"));
+      lid.position.y = 0.16;
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: "#e8f59a", transparent: true, opacity: 0.6, blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.position.y = 0.08;
+      glow.scale.setScalar(0.45);
+      jarGlows.push(glow);
+      g.add(jar, lid, glow);
+    } else {
+      const badge = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.015, 12), flat("#b0703a", { metalness: 0.4, roughness: 0.5 }));
+      badge.rotation.x = Math.PI / 2 - 0.25;
+      badge.position.y = 0.12;
+      const ribbon = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.1, 0.01), flat("#7a3b3b"));
+      ribbon.position.set(0, 0.05, -0.01);
+      g.add(ribbon, badge);
+    }
+    g.traverse((o) => (o.castShadow = o instanceof THREE.Mesh));
+    return g;
+  }
+  function placeKeeps() {
+    keeps.clear();
+    jarGlows.length = 0;
+    for (const k of JOURNAL_KEEPSAKES) {
+      if (!save?.loot?.includes(k.id)) continue;
+      const [x, board] = KEEP_AT[k.id] ?? [0, 1];
+      const o = keepsakeShape(k.id);
+      o.position.set(x, shelfBoards[board].position.y + 0.02, 0);
+      keeps.add(o);
+    }
+  }
+  placeKeeps();
+
   // ---------- the fox's corner, by the door on the east side ----------
   const FOXBED = { x: 1.75, z: 1.75 };
   const corner = new THREE.Group();
@@ -404,6 +477,13 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
     notes: NOTES,
     ready,
     use(spot) {
+      if (spot.id === "shelf") {
+        const have = JOURNAL_KEEPSAKES.filter((k) => save?.loot?.includes(k.id));
+        if (!have.length) return null;
+        const names = have.map((k) => k.name.toLowerCase());
+        const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+        return `Your shelf: the ${list}. One for every stretch of days you looked after yourself.`;
+      }
       if (spot.id !== "mirror") return null;
       const n = mirrorLooks++;
       const line = save?.firstLine?.trim();
@@ -417,6 +497,7 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
     refresh() {
       tools.set(save?.tools ?? []);
       note.visible = !!save?.firstLine;
+      placeKeeps();
     },
     update(dt, time) {
       const flicker = Math.sin(time * 7) * 0.4 + Math.sin(time * 12.3) * 0.3 + Math.sin(time * 3.1) * 0.3;
@@ -424,6 +505,7 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
       lampGlow.material.opacity = 0.7 + flicker * 0.05;
       candleLight.intensity = 2.5 + Math.sin(time * 11) * 0.3 + Math.sin(time * 17.7) * 0.2;
       flame.scale.y = 1 + Math.sin(time * 13) * 0.15;
+      jarGlows.forEach((g) => (g.material.opacity = 0.45 + Math.sin(time * 2.3) * 0.15 + Math.sin(time * 5.7) * 0.08));
       // the lantern sways a touch
       lantern.rotation.z = Math.sin(time * 0.9) * 0.03;
       lantern.rotation.x = Math.sin(time * 0.7 + 1) * 0.02;
