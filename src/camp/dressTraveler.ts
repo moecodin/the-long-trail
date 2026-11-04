@@ -56,9 +56,12 @@ export function carryTools(traveler: Person) {
   const knob = new THREE.Mesh(new THREE.SphereGeometry(0.04, 8, 6), wood);
   knob.position.y = 0.64;
   stick.add(shaft, knob);
-  // diagonally across the back
-  stick.position.set(0, 0.95, -0.16);
-  stick.rotation.set(0.05, 0, 0.75);
+  // Slung low across the back, below the hair. KayKit heads are big and the
+  // hair hangs down to about 0.72 m and back to 0.40 m, so the stick sits
+  // behind the cape at waist height, tilted so the knob end pokes out past
+  // the hair on one side instead of running up through it.
+  stick.position.set(0, 0.52, -0.31);
+  stick.rotation.set(0, 0, 1.3);
 
   const lantern = new THREE.Group();
   const iron = new THREE.MeshStandardMaterial({ color: "#3b3631", metalness: 0.6, roughness: 0.5 });
