@@ -10,7 +10,7 @@ import "./style.css";
 import * as THREE from "three";
 import { AudioManager } from "./audio";
 import { loadSave, writeSave } from "./save";
-import { travelerById, type Traveler } from "./travelers";
+import { portraitSVG, travelerById, type Traveler } from "./travelers";
 import { createWorld, WIN_X } from "./scene/world";
 import { Director, Skip } from "./scene/director";
 import type { Person } from "./scene/people";
@@ -19,6 +19,7 @@ import { Sync } from "./journal/sync";
 import { campHint, cardFound, chapterCard, creationScreen, nameFox, pickKeepsake, pickOne, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
 import { doodle, doodleArt } from "./journal/doodles";
 import { keepsakesFor, lanternsFor, loggedDays } from "./journal/loot";
+import { makeHint, makePiece, missing, nextPiece } from "./camp/build";
 import { RECIPES, TRAIL_CARDS, useFoundRecipes } from "./journal/recipes";
 import { trailCard } from "./journal/cards";
 import { startCamp, type CampSession } from "./camp/play";
@@ -96,6 +97,14 @@ const { journal, satchel } = mountSatchel({
   satchel: {
     gathered: () => ITEMS.map((i) => ({ id: i.id, name: i.name, count: save.gather.gathered[i.id] ?? 0, about: i.about, where: i.where })),
     game: () => save,
+    toggleShelf: (id) => {
+      const i = save.shelf.indexOf(id);
+      if (i >= 0) save.shelf.splice(i, 1);
+      else if (save.shelf.length < 3) save.shelf.push(id);
+      writeSave(save);
+      sync.schedule();
+      camp?.refresh();
+    },
   },
   firstLine: () => save.firstLine || null,
   onRested: () => camp?.note(restedLine()),
@@ -121,6 +130,8 @@ const sync = new Sync(journal, {
       cards: save.cards,
       quests: save.quests,
       loot: save.loot,
+      built: save.built,
+      shelf: save.shelf,
       fox: save.fox,
     },
     updated: save.updated ?? 0,
@@ -494,6 +505,20 @@ async function checkFinds() {
   }
 }
 
+/** Tapping Make at camp: make the next camp piece if you have what it needs, or say what's missing. */
+function makeSomething(): string {
+  const p = nextPiece(save.built);
+  if (!p) return "You've made everything you can for now. You'll think of more further up the trail.";
+  if (missing(p, save.gather).length) return makeHint(p, save.gather);
+  makePiece(p, save.gather, save.built);
+  writeSave(save);
+  sync.schedule();
+  bumpSatchel();
+  satchel.refresh();
+  camp?.refresh();
+  return p.made(save.fox?.name ?? "The fox");
+}
+
 /** The traveler's own lines in a conversation. */
 const YOU = { you: true };
 
@@ -637,7 +662,7 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
       where === "camp"
         ? (r, look) => createCamp(r, look, save)
         : where === "tent"
-          ? (r, look) => createTentInside(r, look, save)
+          ? (r, look) => createTentInside(r, look, save, portraitSVG(t))
           : (r, look) => createLeg1(r, look, { save, today, changed: saveChanged }),
     startAt: opts.startAt,
     onFirstMove: () => hint?.(),
@@ -657,6 +682,7 @@ async function enter(where: Place, opts: { firstTime?: boolean; card?: [string, 
         void dellaChat();
         return "";
       }
+      if (spot.id === "make") return makeSomething();
       return null;
     },
     onGather: (spot) => {

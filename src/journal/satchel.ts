@@ -41,11 +41,14 @@ export interface SatchelOptions {
     shortcuts: readonly string[];
     legsDone: readonly number[];
     loot: readonly string[];
+    shelf: readonly string[];
   };
   /** The journal's data, to count the days you've logged this week. */
   journal(): JournalData;
   /** Open a recipe in the journal (from its card). */
   openRecipe(id: string): void;
+  /** Stand a card on the tent shelf, or take it off (up to 3 fit). */
+  toggleShelf(id: string): void;
 }
 
 const TABS: { id: SatchelPage; label: string }[] = [
@@ -97,7 +100,7 @@ const CARRIED: { id: string; name: string; art: string; sub: string; about: stri
   { id: "mapscrap", name: "Map scrap: the Stone Bridge", art: "map", sub: "A gift from the mice", about: "A tiny drawing of a stone bridge, done in what looks like blackberry ink. The first piece of something bigger.", has: (q) => q.includes("thimble:done") },
 ];
 
-const doodleFor = (id: string) => (id === "chamomile" ? "flower" : id);
+const doodleFor = (id: string) => (id === "chamomile" ? "flower" : id === "twig" ? "stick" : id);
 
 export class Satchel {
   private panel: HTMLElement | null = null;
@@ -279,6 +282,7 @@ export class Satchel {
              <p class="j-date">${r.meal} · serves ${r.serves}</p>
              <p class="j-small j-faint">${r.minutes}${r.starter ? "" : " · found on the trail"}</p>
              <div class="j-spread"><button class="j-btn small" data-act="open-recipe" data-id="${r.id}">Open in my journal</button></div>
+             ${this.shelfButton(r.id)}
            </div></div>`
       : t
         ? `<div class="tc-show">${trailCard(t, { big: true, still: true })}
@@ -286,6 +290,7 @@ export class Satchel {
              <h2>${esc(t.name)}</h2>
              <p class="j-date">A ${KIND_LABEL[t.kind].toLowerCase()} card · ${t.leg ? `Leg ${t.leg}` : "from your satchel"}</p>
              <p class="j-small j-faint">${esc(t.how)}</p>
+             ${this.shelfButton(t.id)}
            </div></div>`
         : w
           ? `<div class="tc-show">${trailCard(null, { big: true, still: true, waiting: w })}
@@ -357,6 +362,14 @@ export class Satchel {
       <li><span class="j-item static"><span>Secrets</span><span class="hand">${secrets} of ${leg.secrets.length}</span></span></li>
       ${leg.shortcuts.map((s) => `<li><span class="j-item static"><span>${esc(s.name)}</span><span class="hand">${g.shortcuts.includes(s.id) ? "opened" : "not yet"}</span></span></li>`).join("")}
     </ul>`;
+  }
+
+  /** Stand this card on the tent shelf, or take it off. The shelf holds 3. */
+  private shelfButton(id: string) {
+    const shelf = this.opts.game().shelf;
+    if (shelf.includes(id)) return `<div class="j-spread"><button class="j-btn small" data-act="shelf" data-id="${id}">Take it off the tent shelf</button></div>`;
+    if (shelf.length >= 3) return `<p class="j-small j-faint">Your tent shelf holds 3 cards. Take one off to stand this one there.</p>`;
+    return `<div class="j-spread"><button class="j-btn small" data-act="shelf" data-id="${id}">Stand it on the tent shelf</button></div>`;
   }
 
   // ---------- progress ----------
@@ -471,6 +484,9 @@ export class Satchel {
       case "open-recipe":
         this.close();
         return this.opts.openRecipe(id);
+      case "shelf":
+        this.opts.toggleShelf(id);
+        return this.render();
     }
   }
 }

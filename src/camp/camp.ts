@@ -15,6 +15,10 @@ import { applyGroundPaint, fillPatches, groundLit, paintGround, planPatches, typ
 import { carryTools, dressTraveler } from "./dressTraveler";
 import type { Save } from "../save";
 import { glowTexture, type Area, type Blocker, type Spot } from "./area";
+import { buildCampChair } from "./build";
+import { buildHen } from "../trail/leg1";
+import { Pickables } from "../trail/gather";
+import { clockDay } from "../journal/data";
 
 export type { Blocker, Spot } from "./area";
 
@@ -49,6 +53,12 @@ const NOTES: Record<string, string[]> = {
     "An old hand cart with a wobbly wheel. Someone left it here for whoever needs it.",
     "Maybe one day it'll carry things back from the trail.",
   ],
+  log: [
+    "The old fallen log you used to sit on. The chair is comfier, but the log doesn't mind.",
+  ],
+  "visitor:robin": ["A robin hops along the cart's edge, head tilted, keeping an eye on you.", "It sings a short, bright bit of song and goes back to looking for crumbs."],
+  "visitor:hedgehog": ["A hedgehog snuffles about by the supplies. It doesn't seem worried about you at all.", "It's found a beetle. Breakfast, or maybe supper."],
+  "visitor:hen": ["One of Della's hens has wandered all the way out to camp. How did she get here?", "She clucks at you like it's your fault the grass isn't tastier."],
 };
 
 /**
@@ -63,6 +73,9 @@ const FOX_LINES: Record<string, string[]> = {
   "keepsake:flower": ["\"That's Lowmeadow. Where I'm from. Where are you from, I wonder?\""],
   "keepsake:spoon": ["\"Della used to bang this on the pot to call me in. Want me to try it on you, {fox}?\""],
   cart: ["\"You'd fit in there, {fox}. Don't get any ideas.\""],
+  "visitor:robin": ["\"Leave it be, {fox}. It's only visiting.\""],
+  "visitor:hedgehog": ["\"Don't sniff it, {fox}. Trust me on this one.\""],
+  "visitor:hen": ["\"{fox}, no. She's a guest.\""],
 };
 
 /** Camp's notes, with the traveler's lines to the fox woven in once you've met him. */
@@ -127,8 +140,87 @@ export const FROM_TENT = (() => {
   return { x: TENT.x + Math.sin(TENT_FACING) * d, z: TENT.z + Math.cos(TENT_FACING) * d, facing: TENT_FACING };
 })();
 
+/** Today's visitor: a robin on the cart, a hedgehog by the supplies, or one of Della's hens by the fire. */
+function makeVisitor(day: string): { root: THREE.Object3D; spot: Spot; update(time: number): void } | null {
+  let h = 0;
+  for (const c of day) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  const kind = (["robin", "hedgehog", "hen"] as const)[h % 3];
+  const root = new THREE.Group();
+  let bob: (time: number) => void = () => {};
+  let at = { x: 0, z: 0, y: 0, ry: 0 };
+  if (kind === "robin") {
+    // perched on the cart's near edge
+    at = { x: 4.85, z: -2.55, y: 1.12, ry: -2.2 };
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6), flat("#7a5a3a"));
+    body.scale.set(0.9, 0.85, 1.15);
+    const breast = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 6), flat("#d9603b"));
+    breast.position.set(0, -0.01, 0.04);
+    const head = new THREE.Group();
+    head.position.set(0, 0.07, 0.05);
+    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 6), flat("#7a5a3a"));
+    const beak = new THREE.Mesh(new THREE.ConeGeometry(0.012, 0.035, 4), flat("#3b2a1e"));
+    beak.rotation.x = Math.PI / 2;
+    beak.position.z = 0.05;
+    head.add(skull, beak);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.015, 0.08), flat("#5a4028"));
+    tail.position.set(0, 0.02, -0.1);
+    tail.rotation.x = -0.5;
+    root.add(body, breast, head, tail);
+    bob = (t) => {
+      const hop = Math.max(0, Math.sin(t * 1.3)) > 0.97 ? 0.03 : 0;
+      root.position.y = at.y + hop;
+      head.rotation.y = Math.sin(t * 0.8) > 0.3 ? 0.6 : -0.3;
+    };
+  } else if (kind === "hedgehog") {
+    at = { x: -4.4, z: 1.25, y: 0, ry: 0.9 };
+    const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 9, 7), flat("#5a4634"));
+    body.scale.set(1, 0.7, 1.25);
+    body.position.y = 0.1;
+    root.add(body);
+    const spike = flat("#3e3024");
+    for (let i = 0; i < 22; i++) {
+      const a = (i / 22) * Math.PI * 2, b = 0.35 + (i % 3) * 0.25;
+      const sp = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.11, 4), spike);
+      const dir = new THREE.Vector3(Math.cos(a) * Math.cos(b), Math.sin(b), Math.sin(a) * Math.cos(b) * 1.2 - 0.05).normalize();
+      sp.position.set(dir.x * 0.15, 0.1 + dir.y * 0.11, dir.z * 0.18);
+      sp.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      root.add(sp);
+    }
+    const snout = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 6), flat("#c9a27a"));
+    snout.rotation.x = Math.PI / 2;
+    snout.position.set(0, 0.07, 0.24);
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.018, 5, 4), flat("#1a1410"));
+    nose.position.set(0, 0.07, 0.31);
+    root.add(snout, nose);
+    bob = (t) => {
+      root.position.x = at.x + Math.sin(t * 0.35) * 0.25;
+      root.rotation.y = at.ry + Math.cos(t * 0.35) * 0.6;
+    };
+  } else {
+    at = { x: -1.9, z: 2.3, y: 0, ry: 2.6 };
+    const hen = buildHen("#c98a4a", "#a86a32");
+    root.add(hen.root);
+    bob = (t) => {
+      // peck, peck, look about
+      const p = Math.sin(t * 2.2);
+      hen.head.rotation.x = p > 0.6 ? 0.8 : 0;
+      root.rotation.y = at.ry + Math.sin(t * 0.25) * 0.8;
+    };
+  }
+  root.position.set(at.x, at.y, at.z);
+  root.rotation.y = at.ry;
+  root.traverse((o) => (o.castShadow = o instanceof THREE.Mesh));
+  const id = `visitor:${kind}`;
+  const stand = { x: at.x + 0.9, z: at.z + 0.7 };
+  return {
+    root,
+    spot: { id, label: "Look", x: at.x, z: at.z, range: 1.4, standX: stand.x, standZ: stand.z, tapTargets: [root] },
+    update: bob,
+  };
+}
+
 /** What camp shows of your progress: your keepsake, and the tools you carry. */
-export type CampSave = Pick<Save, "keepsake" | "tools" | "fox" | "loot">;
+export type CampSave = Pick<Save, "keepsake" | "tools" | "fox" | "loot" | "gather" | "built">;
 
 export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save?: CampSave): CampWorld {
   const scene = new THREE.Scene();
@@ -342,13 +434,78 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   // the tent: walk in through the open flaps (see tent.ts)
   spots.push({ id: "exit:tent", label: "Go in", x: TENT.x, z: TENT.z, range: 2.9, standX: TENT.x + tentFront.x, standZ: TENT.z + tentFront.z, tapTargets: [tent] });
 
-  // ---------- the bench by the fire ----------
+  // ---------- a fallen log by the fire: your seat, until you make a camp chair ----------
+  // (camp packs up and moves with you, so the seat is something you'd find
+  // anywhere: a log. The chair you make later folds flat for the road.)
   const BENCH = { x: 2.15, z: 0.25 };
-  const bench = box(0.5, 0.42, 2.0, "#7a5532", BENCH.x, BENCH.z);
+  const LOG_R = 0.22;
+  const bench = new THREE.Group();
+  bench.position.set(BENCH.x, LOG_R, BENCH.z);
+  const bark = flat("#6b4a2c");
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(LOG_R, LOG_R * 1.08, 1.9, 9), bark);
+  trunk.rotation.x = Math.PI / 2;
+  trunk.castShadow = trunk.receiveShadow = true;
+  bench.add(trunk);
+  const ringMat = flat("#c8a274");
+  for (const e of [-1, 1]) {
+    const end = new THREE.Mesh(new THREE.CircleGeometry(LOG_R * (e > 0 ? 1.08 : 1) - 0.02, 9), ringMat);
+    end.position.z = e * 0.951;
+    end.rotation.y = e > 0 ? 0 : Math.PI;
+    bench.add(end);
+  }
+  // a stub of a broken branch
+  const stub = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.06, 0.25, 6), bark);
+  stub.position.set(0.12, 0.12, 0.5);
+  stub.rotation.z = -0.9;
+  bench.add(stub);
+  scene.add(bench);
   block(BENCH.x, BENCH.z - 0.65, 0.42);
   block(BENCH.x, BENCH.z + 0.65, 0.42);
-  const seat = { x: BENCH.x, z: BENCH.z, y: 0, facing: -Math.PI / 2 };
-  spots.push({ id: "bench", label: "Sit", x: BENCH.x, z: BENCH.z, range: 1.3, standX: BENCH.x - 0.8, standZ: BENCH.z, tapTargets: [bench] });
+  // the seated body sinks 0.42 m in the sit pose, so lift it to rest on the log's top
+  const LOG_SEAT = { x: BENCH.x, z: BENCH.z, y: LOG_R * 2 + 0.15, facing: -Math.PI / 2 };
+  const seat = { ...LOG_SEAT };
+  const benchSpot: Spot = { id: "bench", label: "Sit", x: BENCH.x, z: BENCH.z, range: 1.3, standX: BENCH.x - 0.8, standZ: BENCH.z, tapTargets: [bench] };
+  spots.push(benchSpot);
+
+  // ---------- the folding camp chair, once you've made it (see build.ts) ----------
+  const CHAIR = { x: 1.25, z: 1.75 };
+  const chairFacing = Math.atan2(-CHAIR.x, -CHAIR.z);
+  const chair = buildCampChair();
+  chair.position.set(CHAIR.x, 0, CHAIR.z);
+  chair.rotation.y = chairFacing;
+  chair.visible = false;
+  scene.add(chair);
+  let chairBlock: Blocker | null = null;
+  const logSpot: Spot = { id: "log", label: "Look", x: BENCH.x, z: BENCH.z, range: 1.3, standX: BENCH.x - 0.8, standZ: BENCH.z, tapTargets: [bench] };
+  function placeChair() {
+    const has = !!save?.built?.includes("chair");
+    chair.visible = has;
+    if (has && !chairBlock) {
+      chairBlock = { x: CHAIR.x, z: CHAIR.z, r: 0.32 };
+      blockers.push(chairBlock);
+      // the chair is your seat now; the log is just a log
+      Object.assign(seat, { x: CHAIR.x, z: CHAIR.z, y: 0.55, facing: chairFacing });
+      const out = { x: CHAIR.x + Math.sin(chairFacing) * 0.75, z: CHAIR.z + Math.cos(chairFacing) * 0.75 };
+      Object.assign(benchSpot, { x: CHAIR.x, z: CHAIR.z, range: 1.1, standX: out.x, standZ: out.z, tapTargets: [chair] });
+      if (!spots.includes(logSpot)) spots.push(logSpot);
+    }
+  }
+  placeChair();
+
+  // ---------- making things: at the coil of rope by the supplies ----------
+  const MAKE = { x: -4.65, z: -0.7 };
+  const makeMark = new THREE.Group();
+  makeMark.position.set(MAKE.x, 0, MAKE.z);
+  scene.add(makeMark);
+  spots.push({ id: "make", label: "Make", x: MAKE.x, z: MAKE.z, range: 1.3, standX: MAKE.x + 0.8, standZ: MAKE.z + 0.5, tapTargets: [makeMark] });
+
+  // ---------- dry sticks to gather around the edge of camp (they fall again each day) ----------
+  const pickables = new Pickables(spots, save?.gather ?? { gathered: {}, picked: {} }, clockDay(Date.now()));
+  scene.add(pickables.group);
+  for (const [i, a] of [-0.95, -2.45, 2.0, 2.95, -1.6, 1.25].entries()) {
+    const r = 8.4 - (i % 2) * 0.5;
+    void pickables.add(`camp:twig:${i + 1}`, "twig", Math.sin(a) * r, -Math.cos(a) * r);
+  }
 
   // ---------- supplies by the tent ----------
   const SUPPLY = { x: -5.4, z: -0.4 };
@@ -527,6 +684,14 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   }
   placeLanterns();
 
+  // ---------- a small visitor at camp, a different one each day ----------
+  const visitor = makeVisitor(clockDay(Date.now()));
+  if (visitor) {
+    scene.add(visitor.root);
+    spots.push(visitor.spot);
+    block(visitor.spot.x, visitor.spot.z, 0.2);
+  }
+
   // a few trees as cones so the clearing has edges before the kits load
   const coneTrees = new THREE.Group();
   const leaf = flat("#3e5e34");
@@ -544,8 +709,7 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
   async function dress() {
     const people = dressTraveler(traveler, frameHooks);
 
-    const [kitBench, kitBarrel, kitCrate, apples, bag, bucket, pot, rope, lantern, wagon, fence] = await Promise.all([
-      model("props", "Bench"),
+    const [kitBarrel, kitCrate, apples, bag, bucket, pot, rope, lantern, wagon, fence] = await Promise.all([
       model("props", "Barrel"),
       model("props", "Crate_Wooden"),
       model("props", "FarmCrate_Apple"),
@@ -609,20 +773,13 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       console.warn("Tent model did not load; keeping the hand-built tent.", err);
     }
 
-    // the bench: the kit's is long, so it's shortened to fit two people
-    kit.add(place(kitBench, BENCH.x, 0, BENCH.z, Math.PI / 2, [0.75, 0.85, 0.95]));
-    // The seat top is 0.45 m up, but the KayKit sit pose sinks the body 0.42 m,
-    // which left the traveler sunk into the plank. Lift the seated position so
-    // the bottom of the body rests on the seat.
-    seat.y = 0.6;
-    bench.visible = false;
-    spots.find((s) => s.id === "bench")!.tapTargets.push(kitBench);
 
     // supplies
     kit.add(place(kitBarrel, SUPPLY.x, 0, SUPPLY.z, 0.4, 0.95));
     kit.add(place(kitCrate, SUPPLY.x + 0.2, 0, SUPPLY.z + 0.9, 0.3, 0.6));
     kit.add(place(apples, SUPPLY.x + 0.2, 0.68, SUPPLY.z + 0.9, 0.5, 0.9));
     kit.add(place(rope, SUPPLY.x + 0.75, 0, SUPPLY.z - 0.3, 1.2));
+    spots.find((sp) => sp.id === "make")!.tapTargets.push(rope);
     kit.add(place(bag, TENT.x + 2.15, 0, TENT.z + 0.7, 0.9, 0.8));
     barrel.visible = crate.visible = false;
     spots.find((s) => s.id === "supplies")!.tapTargets.push(kitBarrel, kitCrate, apples);
@@ -804,9 +961,13 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       tools.set(save?.tools ?? []);
       placeKeepsake();
       placeLanterns();
+      placeChair();
       camp.notes = campNotes(save?.fox?.name ?? null);
     },
+    pick: (spot, toward) => pickables.pick(spot, toward),
     update(dt, time) {
+      pickables.update(dt, time);
+      visitor?.update(time);
       if (keepsakeLight) keepsakeLight.intensity = 2.2 + Math.sin(time * 9) * 0.25 + Math.sin(time * 13.7) * 0.2;
       // the fire flickers
       const flicker = Math.sin(time * 11) * 0.4 + Math.sin(time * 17.3) * 0.3 + Math.sin(time * 5.1) * 0.3;
