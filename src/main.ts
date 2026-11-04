@@ -17,7 +17,8 @@ import type { Person } from "./scene/people";
 import { mountSatchel } from "./ui/satchel";
 import { Sync } from "./journal/sync";
 import { campHint, cardFound, chapterCard, creationScreen, nameFox, pickKeepsake, pickOne, say, skipButton, storybook, titleScreen, writeFirstLine } from "./ui/screens";
-import { doodleArt } from "./journal/doodles";
+import { doodle, doodleArt } from "./journal/doodles";
+import { keepsakesFor, lanternsFor, loggedDays } from "./journal/loot";
 import { RECIPES, TRAIL_CARDS, useFoundRecipes } from "./journal/recipes";
 import { trailCard } from "./journal/cards";
 import { startCamp, type CampSession } from "./camp/play";
@@ -72,6 +73,8 @@ const { journal, satchel } = mountSatchel({
   onClose: () => {
     journalOpen = false;
     updatePause();
+    // a newly logged day may have earned a spark's lantern, a surprise or a keepsake
+    void checkFinds();
   },
   onToggleSound: () => {
     save.muted = !save.muted;
@@ -117,6 +120,7 @@ const sync = new Sync(journal, {
       recipes: save.recipes,
       cards: save.cards,
       quests: save.quests,
+      loot: save.loot,
       fox: save.fox,
     },
     updated: save.updated ?? 0,
@@ -443,12 +447,34 @@ async function checkFinds() {
       news.push({ kicker: "Found a recipe!", html: trailCard(r, { big: true, still: true }), line: r.found.note });
     }
   }
+  const days = loggedDays(journal.data);
   for (const c of TRAIL_CARDS) {
-    if (save.cards.includes(c.id) || !CARD_EARNED[c.id]?.()) continue;
+    if (save.cards.includes(c.id) || !(c.days ? days >= c.days : CARD_EARNED[c.id]?.())) continue;
     save.cards.push(c.id);
-    news.push({ kicker: "New trail card!", html: trailCard(c, { big: true, still: true }), line: c.how });
+    news.push({ kicker: c.kind === "treasure" ? "Satchel surprise!" : "New trail card!", html: trailCard(c, { big: true, still: true }), line: c.how });
+  }
+  // lantern sparks: every 4 logged days hangs another lantern at camp
+  const newLanterns: number[] = [];
+  for (let n = 1; n <= lanternsFor(days); n++) {
+    if (save.loot.includes(`lantern:${n}`)) continue;
+    save.loot.push(`lantern:${n}`);
+    newLanterns.push(n);
+  }
+  if (newLanterns.length) {
+    const n = newLanterns[newLanterns.length - 1];
+    news.push({
+      kicker: "A new lantern for camp!",
+      html: `<div class="loot-big">${doodle("lantern", "loot-doodle")}</div>`,
+      line: `Four lantern sparks, one for each day you logged. ${n === 1 ? "Your first lantern" : `Lantern number ${n}`} now hangs at camp.`,
+    });
+  }
+  for (const k of keepsakesFor(days)) {
+    if (save.loot.includes(k.id)) continue;
+    save.loot.push(k.id);
+    news.push({ kicker: "A journal keepsake!", html: `<div class="loot-big">${doodle(k.art, "loot-doodle")}</div><p class="loot-name">${k.name}</p>`, line: k.line });
   }
   if (!news.length) return;
+  camp.refresh();
   writeSave(save);
   sync.schedule();
   journal.refresh();

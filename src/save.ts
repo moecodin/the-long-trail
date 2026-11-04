@@ -38,6 +38,8 @@ export interface Save {
   cards: string[];
   /** Side path steps you've done, like "goodbye:tin" (see trail/paths.ts). */
   quests: string[];
+  /** Rewards for logging you've been given, like "lantern:2" or "keep:feather" (see journal/loot.ts). */
+  loot: string[];
   /** Your fox, once you've met him at camp (see camp/foxMeeting.ts). How you first said hello flavors his mood lines. */
   fox: { name: string; hello: "apple" | "still" | "soft" | "alone" } | null;
   /** When this last changed (ms), for syncing. */
@@ -64,6 +66,7 @@ const fresh = (): Save => ({
   recipes: [],
   cards: [],
   quests: [],
+  loot: [],
   fox: null,
 });
 

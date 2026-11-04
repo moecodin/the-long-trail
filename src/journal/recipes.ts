@@ -212,7 +212,7 @@ export const knownRecipes = () => RECIPES.filter((r) => r.starter || foundRecipe
 
 // ---------- the card album ----------
 
-export type CardKind = "recipe" | "place" | "critter";
+export type CardKind = "recipe" | "place" | "critter" | "treasure";
 
 /** A trail card that isn't a recipe: a place or a critter, earned out on the trail. */
 export interface TrailCardFace {
@@ -225,7 +225,10 @@ export interface TrailCardFace {
   hint: string;
   /** How you earned it (shown once you have it). */
   how: string;
+  /** The leg it's found on, or 0 for a satchel surprise (earned by logging). */
   leg: number;
+  /** Satchel surprises: how many logged days it takes. */
+  days?: number;
 }
 
 /** Place and critter cards, in the order you'll likely find them. */
@@ -257,6 +260,26 @@ export const TRAIL_CARDS: TrailCardFace[] = [
     how: "Walked Leg 1 to the end and made your first camp.",
     leg: 1,
   },
+  // satchel surprises: one every 7 logged days (see loot.ts)
+  ...(
+    [
+      ["bluebells", "Bluebell Sprig", "Somebody tucked these in your satchel. They still smell like rain."],
+      ["acorn", "Lucky Acorn", "Smooth and fat and perfect. The fox would like it very much."],
+      ["dew", "Morning Dew", "The trail at sunrise, when every leaf holds a little light."],
+      ["coin", "Old Copper Coin", "Worn too smooth to read. It's from somewhere far up the trail."],
+      ["fireflies", "Jar of Fireflies", "Borrowed for one night, then let go at the edge of the wood."],
+      ["rose", "Wild Rose", "The kind that grows over old walls and doesn't ask permission."],
+    ] as const
+  ).map(([id, name, line], i): TrailCardFace => ({
+    id,
+    kind: "treasure",
+    name,
+    line,
+    hint: `A satchel surprise at ${(i + 1) * 7} logged days`,
+    how: `A satchel surprise for ${(i + 1) * 7} logged days in your journal.`,
+    leg: 0,
+    days: (i + 1) * 7,
+  })),
 ];
 
 /** Recipe cards still out on the trail, shown face down with a hint until found. */
@@ -264,4 +287,4 @@ export const RECIPE_HINTS: Record<string, string> = {
   bread: "Something warm from Della's kitchen",
 };
 
-export const KIND_LABEL: Record<CardKind, string> = { recipe: "Recipe", place: "Place", critter: "Critter" };
+export const KIND_LABEL: Record<CardKind, string> = { recipe: "Recipe", place: "Place", critter: "Critter", treasure: "Treasure" };

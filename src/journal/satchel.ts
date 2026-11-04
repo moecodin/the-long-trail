@@ -10,6 +10,7 @@
 
 import { el, escapeHtml as esc } from "../ui/dom";
 import { live, weekOf, journalDay, type JournalData } from "./data";
+import { DAYS_PER_SURPRISE, JOURNAL_KEEPSAKES, SPARKS_PER_LANTERN, lanternsFor, loggedDays as allLoggedDays } from "./loot";
 import { doodle } from "./doodles";
 import { trailCard } from "./cards";
 import { KIND_LABEL, RECIPE_HINTS, TRAIL_CARDS, knownRecipes, recipe, type CardKind } from "./recipes";
@@ -39,6 +40,7 @@ export interface SatchelOptions {
     keepsake: string | null;
     shortcuts: readonly string[];
     legsDone: readonly number[];
+    loot: readonly string[];
   };
   /** The journal's data, to count the days you've logged this week. */
   journal(): JournalData;
@@ -177,7 +179,8 @@ export class Satchel {
     const tools = TOOLS.filter((t) => g.tools.includes(t.id));
     const keep = g.keepsake ? KEEPSAKES[g.keepsake] : null;
     const carried = CARRIED.filter((c) => c.has(g.quests));
-    const valid = [...tools.map((t) => `tool:${t.id}`), ...(keep ? ["keepsake"] : []), ...carried.map((c) => `carry:${c.id}`), ...items.map((i) => `item:${i.id}`)];
+    const keeps = JOURNAL_KEEPSAKES.filter((k) => g.loot.includes(k.id));
+    const valid = [...tools.map((t) => `tool:${t.id}`), ...(keep ? ["keepsake"] : []), ...keeps.map((k) => `jkeep:${k.id}`), ...carried.map((c) => `carry:${c.id}`), ...items.map((i) => `item:${i.id}`)];
     if (!valid.includes(this.itemPick)) this.itemPick = tools.length ? `tool:${tools[0].id}` : found.length ? `item:${found[0].id}` : (valid[0] ?? "");
     const pick = this.itemPick;
     const slot = (id: string, art: string, label: string, on: boolean, empty = false) =>
@@ -192,6 +195,7 @@ export class Satchel {
       <h2>Trail tools</h2>
       <div class="s-slots">${toolSlots}</div>
       ${keep ? `<h2>Keepsake</h2><div class="s-slots">${slot("keepsake", keep.art, keep.name, pick === "keepsake")}</div>` : ""}
+      ${keeps.length ? `<h2>Journal keepsakes</h2><div class="s-slots">${keeps.map((k) => slot(`jkeep:${k.id}`, k.art, k.name, pick === `jkeep:${k.id}`)).join("")}</div>` : ""}
       ${carried.length ? `<h2>Carrying</h2><div class="s-slots">${carried.map((c) => slot(`carry:${c.id}`, c.art, c.name, pick === `carry:${c.id}`)).join("")}</div>` : ""}
       <h2>Gathered</h2>
       <p class="j-date">${found.length ? `${found.reduce((n, i) => n + i.count, 0)} picked on the trail so far` : "Nothing picked yet. Look for a sparkle on the trail"}</p>
@@ -221,6 +225,11 @@ export class Satchel {
       if (!k) return "";
       return show(k.art, esc(k.name), "Your keepsake from Della's table", `<span class="hand">${esc(k.line)}</span>`, `<p class="j-small j-faint">It sits by your tent at camp.</p>`);
     }
+    if (kind === "jkeep") {
+      const k = JOURNAL_KEEPSAKES.find((x) => x.id === pick.slice("jkeep:".length));
+      if (!k) return "";
+      return show(k.art, esc(k.name), `For ${k.days} logged days`, esc(k.line), `<p class="j-small j-faint">It stands on the shelf in your tent.</p>`);
+    }
     if (kind === "carry") {
       const c = CARRIED.find((x) => x.id === id);
       if (!c) return "";
@@ -244,7 +253,10 @@ export class Satchel {
       ...Object.entries(RECIPE_HINTS)
         .filter(([id]) => !known.some((r) => r.id === id))
         .map(([id, hint]) => ({ id: `down:${id}`, kind: "recipe" as CardKind, hint })),
-      ...TRAIL_CARDS.filter((c) => !g.cards.includes(c.id)).map((c) => ({ id: `down:${c.id}`, kind: c.kind, hint: c.hint })),
+      // only the next satchel surprise waits face down, not all of them
+      ...TRAIL_CARDS.filter((c) => !g.cards.includes(c.id))
+        .filter((c, _, rest) => c.kind !== "treasure" || c === rest.find((r) => r.kind === "treasure"))
+        .map((c) => ({ id: `down:${c.id}`, kind: c.kind, hint: c.hint })),
     ];
     return { up, down };
   }
@@ -272,7 +284,7 @@ export class Satchel {
         ? `<div class="tc-show">${trailCard(t, { big: true, still: true })}
            <div class="tc-about">
              <h2>${esc(t.name)}</h2>
-             <p class="j-date">A ${KIND_LABEL[t.kind].toLowerCase()} card · Leg ${t.leg}</p>
+             <p class="j-date">A ${KIND_LABEL[t.kind].toLowerCase()} card · ${t.leg ? `Leg ${t.leg}` : "from your satchel"}</p>
              <p class="j-small j-faint">${esc(t.how)}</p>
            </div></div>`
         : w
@@ -384,7 +396,8 @@ export class Satchel {
       <h2>Act 1</h2>
       <p class="j-date">${g.legsDone.length} of ${ACT1_LEGS} legs walked</p>
       <ul class="s-legs">${legs}</ul>
-      <p class="j-small j-faint">Logged ${loggedDays} ${loggedDays === 1 ? "day" : "days"} in your journal this week. Logging is what opens the main trail.</p>`;
+      <p class="j-small j-faint">Logged ${loggedDays} ${loggedDays === 1 ? "day" : "days"} in your journal this week. Logging is what opens the main trail.</p>
+      ${this.sparks(d)}`;
     const right = `
       <h2>Found so far</h2>
       <ul class="j-list">
@@ -397,6 +410,22 @@ export class Satchel {
       <h2>Side paths</h2>
       ${this.sidePaths()}`;
     return [left, right];
+  }
+
+  /** Lantern sparks: one per logged day, and what the next ones bring. */
+  private sparks(d: JournalData) {
+    const days = allLoggedDays(d);
+    const lanterns = lanternsFor(days);
+    const toward = days % SPARKS_PER_LANTERN;
+    const pips = Array.from({ length: SPARKS_PER_LANTERN }, (_, i) => `<span class="s-pip${i < toward ? " lit" : ""}">${doodle("sparkle", "s-pip-art")}</span>`).join("");
+    const surprise = DAYS_PER_SURPRISE - (days % DAYS_PER_SURPRISE);
+    const keep = JOURNAL_KEEPSAKES.find((k) => days < k.days);
+    const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+    return `<h2>Lantern sparks</h2>
+      <p class="j-date">${plural(days, "spark")} · ${plural(lanterns, "lantern")} at camp</p>
+      <div class="s-pips" role="img" aria-label="${toward} of ${SPARKS_PER_LANTERN} sparks toward the next lantern">${pips}</div>
+      <p class="j-small j-faint">One spark for every day you log a meal. Every ${SPARKS_PER_LANTERN} hang a new lantern at camp.
+        Next satchel surprise in ${plural(surprise, "logged day")}${keep ? `, next keepsake at ${keep.days} logged days` : ""}.</p>`;
   }
 
   /** The side paths you've reached, each with its steps ticked off. */

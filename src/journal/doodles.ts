@@ -34,6 +34,10 @@ const D: Record<string, string> = {
   specs: `<circle cx="9.5" cy="17" r="5"/><circle cx="22.5" cy="17" r="5"/><path d="M14.5 16c1-1.5 2-1.5 3 0M4.5 15.5L2 11M27.5 15.5L30 11"/>`,
   thimble: `<path d="M10 27V14a6 6 0 0 1 12 0v13Z"/><path d="M8 27h16"/><path d="M13 13h.1M16 12h.1M19 13h.1M13 17h.1M16 16h.1M19 17h.1M13 21h.1M16 20h.1M19 21h.1" stroke-width="2"/><path d="M22 18c3 0 4 2 3 4s-3 2-3 2" stroke-width="1.4"/>`,
   feather: `<path d="M8 28C9 16 15 7 26 4c-1 11-8 18-18 24Z"/><path d="M8 28L20 12M13 19h5M16 15h4"/>`,
+  compass: `<circle cx="16" cy="17" r="11"/><path d="M16 4V2M14 2h4"/><path d="M16 10l3 7-3 7-3-7Z"/><path d="M16 17h.1" stroke-width="2.6"/>`,
+  bell: `<path d="M8 24c2-2 2-5 2-9a6 6 0 0 1 12 0c0 4 0 7 2 9Z"/><path d="M6 24h20M16 9V6M14 6h4"/><path d="M14 27a2 2 0 0 0 4 0"/>`,
+  jar: `<path d="M10 9h12v3c3 2 4 4 4 8v6c0 2-1 3-3 3H9c-2 0-3-1-3-3v-6c0-4 1-6 4-8Z"/><path d="M9 6h14v3H9Z"/><path d="M13 19h.1M19 22h.1M16 16h.1M12 25h.1M20 17h.1" stroke-width="2.6"/>`,
+  sparkle: `<path d="M16 3c1 7 3 10 10 13-7 3-9 6-10 13-1-7-3-10-10-13 7-3 9-6 10-13Z"/>`,
 };
 
 /** Day doodles cycle through the trail's nature drawings, one per date. */
@@ -143,6 +147,47 @@ export const CARD_ART: Record<string, string> = {
     <path d="M43 42V29l7-7 7 7v13Z" fill="#b39070"/><path d="M41 30l9-9 9 9" fill="#a8522f"/>
     <path d="M48 42v-6h4v6" fill="#6b4a2a"/>
     <path d="M18 14c2-2 4 0 6-1M36 10c2-2 4 0 6-1" stroke-width="1.2"/>
+  </g>`,
+  // satchel surprises (treasure cards)
+  bluebells: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#dfe9d2" stroke="none"/>
+    <path d="M20 44C22 30 28 20 34 12M34 44c0-12 2-20 8-28M27 44c1-8 0-14-3-20" fill="none"/>
+    <path d="M30 18c-3 0-5 3-4 6 2 0 4-1 5-3M37 26c-3 0-5 3-4 6 2 0 4-1 5-3M40 14c-3 0-5 3-4 6 2 0 4-1 5-3M21 28c-3 0-4 3-3 6 2 0 4-1 4-3" fill="#6f7fd0"/>
+    <path d="M14 44c4-6 9-8 13-8-1 5-6 8-13 8Z" fill="#8fae5e"/>
+  </g>`,
+  acorn: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#efe2c4" stroke="none"/>
+    <path d="M22 20c0-6 20-6 20 0Z" fill="#8a5a32"/><path d="M32 14v-4c2-2 5-2 6 0"/>
+    <path d="M24 20c0 12 5 19 8 21 3-2 8-9 8-21Z" fill="#c98a45"/>
+    <path d="M24 17.5h16" stroke-dasharray="1.6 2"/>
+    <path d="M12 12l2 2M50 34l2 2M48 12l1 3M14 36l3-1" stroke="#d9a23b" stroke-width="2"/>
+  </g>`,
+  dew: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#d8e6ea" stroke="none"/>
+    <path d="M6 40C18 26 34 20 58 18c-8 12-24 20-52 22Z" fill="#7fa25a"/>
+    <path d="M10 39C24 30 38 25 54 20" fill="none"/>
+    <path d="M30 22c-3 0-4-3-2-6l2-3 2 3c2 3 1 6-2 6Z" fill="#eaf6fb"/>
+    <path d="M42 18c-2 0-3-2-2-4l2-2 1 2c1 2 1 4-1 4Z" fill="#eaf6fb"/>
+    <path d="M50 8l1 3M52 9.5h-3" stroke="#f4d36a"/>
+  </g>`,
+  coin: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#e7dcc8" stroke="none"/>
+    <circle cx="32" cy="24" r="14" fill="#c7843f"/><circle cx="32" cy="24" r="10" fill="none" stroke-dasharray="1.6 2"/>
+    <path d="M27 28l5-9 5 9Z" fill="#e0a45a"/>
+    <path d="M12 12l2 2M52 36l2 2M50 10l1 3" stroke="#d9a23b" stroke-width="2"/>
+  </g>`,
+  fireflies: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#3b3f5c" stroke="none"/>
+    <path d="M24 14h16v3c3 2 4 4 4 8v11c0 3-2 5-5 5H25c-3 0-5-2-5-5V25c0-4 1-6 4-8Z" fill="#5b6182" stroke="#e8dcc0"/>
+    <path d="M23 10h18v4H23Z" fill="#a8825a" stroke="#e8dcc0"/>
+    <circle cx="29" cy="28" r="4" fill="#f6d34c" stroke="none" opacity="0.4"/><circle cx="36" cy="33" r="4" fill="#f6d34c" stroke="none" opacity="0.4"/>
+    <path d="M29 28h.1M36 33h.1M33 23h.1M12 16h.1M52 26h.1M48 10h.1" stroke="#fbe58a" stroke-width="3"/>
+  </g>`,
+  rose: `<g ${INK}>
+    <rect x="0" y="0" width="64" height="48" fill="#f1dcd6" stroke="none"/>
+    <path d="M32 44V22" fill="none"/><path d="M32 36c-6 0-9-3-10-7 5 0 9 2 10 7ZM32 31c5 0 8-3 9-6-4 0-8 2-9 6Z" fill="#8fae5e"/>
+    <circle cx="32" cy="16" r="8" fill="#d0566a"/><path d="M28 15c2-3 6-3 8 0-2 3-6 4-8 0Z" fill="#e57b8a"/>
+    <path d="M27 44h10" />
   </g>`,
   cottage: `<g ${INK}>
     <rect x="0" y="0" width="64" height="48" fill="#5b4a6e" stroke="none"/>
