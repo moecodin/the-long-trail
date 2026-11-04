@@ -539,7 +539,17 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
       const size = box.getSize(new THREE.Vector3());
       const mid = box.getCenter(new THREE.Vector3());
       const holder = new THREE.Group();
-      t.position.set(-mid.x, -box.min.y, -mid.z);
+      // The loose box above keeps the size the tent was tuned at, but its floor
+      // sits well below the real model, which left the tent floating. Stand it
+      // on the bottom of the door flaps instead (measured on the vertices), so
+      // the cloth meets the ground and the pole ends sink in a little like stakes.
+      let floor = Infinity;
+      t.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.name.startsWith("Entrance")) floor = Math.min(floor, new THREE.Box3().setFromObject(m, true).min.y);
+      });
+      if (!isFinite(floor)) floor = new THREE.Box3().setFromObject(t, true).min.y;
+      t.position.set(-mid.x, -floor, -mid.z);
       holder.add(t);
       const s = TENT_WIDTH / size.x;
       holder.scale.setScalar(s);
@@ -553,7 +563,10 @@ export function createCamp(renderer: THREE.WebGLRenderer, look: PersonLook, save
 
     // the bench: the kit's is long, so it's shortened to fit two people
     kit.add(place(kitBench, BENCH.x, 0, BENCH.z, Math.PI / 2, [0.75, 0.85, 0.95]));
-    seat.y = 0.45;
+    // The seat top is 0.45 m up, but the KayKit sit pose sinks the body 0.42 m,
+    // which left the traveler sunk into the plank. Lift the seated position so
+    // the bottom of the body rests on the seat.
+    seat.y = 0.6;
     bench.visible = false;
     spots.find((s) => s.id === "bench")!.tapTargets.push(kitBench);
 

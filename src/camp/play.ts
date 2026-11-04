@@ -139,6 +139,7 @@ export function startCamp(opts: CampOptions): CampSession {
   document.body.appendChild(note);
   let noteTimer = 0;
   const showNote = (text: string) => {
+    if (document.querySelector(".overlay")) return; // a dialogue box is up; see the frame loop
     note.textContent = text;
     note.classList.add("in");
     noteTimer = 3 + text.length * 0.045;
@@ -296,7 +297,8 @@ export function startCamp(opts: CampOptions): CampSession {
     if (!camp.seat) return;
     seated = true;
     target = null;
-    pos.set(camp.seat.x + 0.05, 0, camp.seat.z);
+    // a little toward the front edge, so the knees clear the plank
+    pos.set(camp.seat.x - 0.06, 0, camp.seat.z);
     facing = camp.seat.facing;
     const lines = camp.notes["bench:sit"] ?? ["You sit by the fire for a while. It's warm."];
     const n = noteCount["bench:sit"] ?? 0;
@@ -460,9 +462,11 @@ export function startCamp(opts: CampOptions): CampSession {
       }
 
       // ---------- notes fade on their own ----------
+      // A note never shares the screen with a dialogue box or a choice card:
+      // the box would sit on top of it (or under it) and both get hard to read.
       if (noteTimer > 0) {
         noteTimer -= dt;
-        if (noteTimer <= 0 || (want > 0 && noteTimer < 2.2)) hideNote();
+        if (noteTimer <= 0 || (want > 0 && noteTimer < 2.2) || document.querySelector(".overlay")) hideNote();
       }
 
       // ---------- the camera follows gently, and turns when you drag ----------

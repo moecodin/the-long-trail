@@ -159,7 +159,7 @@ export function startFoxMeeting(deps: MeetingDeps): { use(spot: Spot): string | 
     glint = 0;
     deps.pause();
     session.note("A tiny, cross yip! Two small eyes back away into the leaves.");
-    await new Promise((r) => setTimeout(r, 1500));
+    await new Promise((r) => setTimeout(r, 2800));
     await deps.say(name, "That's not the wind.", YOU);
     await deps.say(name, "Whoever you are, you sound hungry. And Della packed plenty of apples...", YOU);
     deps.resume();
