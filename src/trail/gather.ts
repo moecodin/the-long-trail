@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { glowTexture, type Spot } from "../camp/area";
 import { model } from "../scene/kits";
 
-export type ItemId = "thyme" | "chives" | "sage" | "chamomile" | "mushroom" | "apple" | "egg";
+export type ItemId = "thyme" | "chives" | "sage" | "chamomile" | "mushroom" | "apple" | "egg" | "twig";
 
 export interface Item {
   id: ItemId;
@@ -18,10 +18,10 @@ export interface Item {
   pickLines: string[];
   /** What the satchel's Items page says about it. */
   about: string;
-  /** Where to find it in Leg 1. */
+  /** Where to find it. */
   where: string;
   /** The Nature kit model and its size, or a hand-built shape. */
-  model: { kit: "nature"; name: string; scale: number } | { built: "apple" | "egg" };
+  model: { kit: "nature"; name: string; scale: number } | { built: "apple" | "egg" | "twig" };
 }
 
 export const ITEMS: Item[] = [
@@ -80,6 +80,14 @@ export const ITEMS: Item[] = [
     about: "Della's hens lay a couple every day, if you know where they hide them.",
     where: "By the hen house",
     model: { built: "egg" },
+  },
+  {
+    id: "twig",
+    name: "Dry sticks",
+    pickLines: ["A good straight stick, dry as a bone.", "More dry sticks. These would make something."],
+    about: "Fallen sticks from the trees around camp. Lash a few together with Della's rope and you can make things for camp.",
+    where: "Around the edge of camp",
+    model: { built: "twig" },
   },
 ];
 
@@ -146,6 +154,19 @@ function buildEgg(): THREE.Object3D {
   return g;
 }
 
+/** A few dry sticks, crossed on the ground. */
+function buildTwigs(): THREE.Object3D {
+  const g = new THREE.Group();
+  const wood = flat("#8a6440");
+  for (const [len, ry, x] of [[0.55, 0.3, 0], [0.45, -0.5, 0.04], [0.38, 1.3, -0.05]] as const) {
+    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.018, len, 5), wood);
+    t.rotation.set(0, ry, Math.PI / 2);
+    t.position.set(x, 0.02, 0);
+    g.add(t);
+  }
+  return g;
+}
+
 let sparkleTex: THREE.Texture | null = null;
 
 interface Pickable {
@@ -180,7 +201,10 @@ export class Pickables {
   async add(spotId: string, id: ItemId, x: number, z: number, y = 0, ry = Math.random() * Math.PI * 2, fromY?: number) {
     if (!grown(this.save, spotId, this.today)) return;
     const it = item(id)!;
-    const thing = "built" in it.model ? (it.model.built === "apple" ? buildApple() : buildEgg()) : await model("nature", it.model.name);
+    const thing =
+      "built" in it.model
+        ? it.model.built === "apple" ? buildApple() : it.model.built === "egg" ? buildEgg() : buildTwigs()
+        : await model("nature", it.model.name);
     if ("kit" in it.model) thing.scale.setScalar(it.model.scale);
     thing.rotation.y = ry;
     const root = new THREE.Group();

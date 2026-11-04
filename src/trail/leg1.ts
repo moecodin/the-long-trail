@@ -107,7 +107,7 @@ const flat = (color: string, extra: Partial<THREE.MeshStandardMaterialParameters
   new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.95, ...extra });
 
 /** A plump little hen built from simple shapes. */
-function buildHen(body: string, wing: string) {
+export function buildHen(body: string, wing: string) {
   const hen = new THREE.Group();
   const bodyMat = flat(body);
   const torso = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), bodyMat);

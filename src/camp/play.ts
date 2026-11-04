@@ -298,7 +298,7 @@ export function startCamp(opts: CampOptions): CampSession {
     seated = true;
     target = null;
     // a little toward the front edge, so the knees clear the plank
-    pos.set(camp.seat.x - 0.06, 0, camp.seat.z);
+    pos.set(camp.seat.x + Math.sin(camp.seat.facing) * 0.06, 0, camp.seat.z + Math.cos(camp.seat.facing) * 0.06);
     facing = camp.seat.facing;
     const lines = camp.notes["bench:sit"] ?? ["You sit by the fire for a while. It's warm."];
     const n = noteCount["bench:sit"] ?? 0;
@@ -309,7 +309,7 @@ export function startCamp(opts: CampOptions): CampSession {
   function standUp() {
     if (!seated || !camp.seat) return;
     seated = false;
-    pos.set(camp.seat.x - 0.75, 0, camp.seat.z);
+    pos.set(camp.seat.x + Math.sin(camp.seat.facing) * 0.75, 0, camp.seat.z + Math.cos(camp.seat.facing) * 0.75);
   }
 
   /** Move by (dx, dz), sliding around things instead of stopping dead. */

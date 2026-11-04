@@ -17,9 +17,11 @@ import { carryTools, dressTraveler } from "./dressTraveler";
 import { glowTexture, type Area, type Blocker, type Capsule, type Spot } from "./area";
 import type { Save } from "../save";
 import { JOURNAL_KEEPSAKES } from "../journal/loot";
+import { buildFoxBasket } from "./build";
+import { cardFace, cardTexture } from "./cardTexture";
 
 /** What the tent shows of your progress. */
-export type TentSave = Pick<Save, "tools" | "firstLine" | "portraitStage" | "loot">;
+export type TentSave = Pick<Save, "tools" | "firstLine" | "portraitStage" | "loot" | "built" | "shelf">;
 
 /** Half the tent's width (x) and depth (z), the side walls' height and the ridge's, in meters. */
 const HW = 2.6;
@@ -153,7 +155,48 @@ function gable(z: number, inside: THREE.Vector3, mat: THREE.Material, doorHalf =
   return g;
 }
 
-export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook, save?: TentSave): Area {
+/**
+ * The mirror's picture: your traveler's portrait as a soft pencil sketch (Act 1).
+ * Drawn small, turned to graphite on warm paper, then scaled up so it stays soft.
+ */
+function sketchTexture(portraitSvg: string): Promise<THREE.Texture> {
+  return new Promise((ok, fail) => {
+    const img = new Image();
+    img.onload = () => {
+      const small = document.createElement("canvas");
+      small.width = 80;
+      small.height = 96;
+      const s = small.getContext("2d")!;
+      s.drawImage(img, 0, 0, 80, 96);
+      const px = s.getImageData(0, 0, 80, 96);
+      const d = px.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const a = d[i + 3] / 255;
+        // graphite: dark lines stay, light areas fade to the paper
+        const lum = (0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]) / 255;
+        const ink = Math.pow(1 - lum, 0.8) * a * 0.95;
+        d[i] = 236 - ink * 170;
+        d[i + 1] = 228 - ink * 172;
+        d[i + 2] = 210 - ink * 170;
+        d[i + 3] = 255;
+      }
+      s.putImageData(px, 0, 0);
+      const big = document.createElement("canvas");
+      big.width = 200;
+      big.height = 240;
+      const b = big.getContext("2d")!;
+      b.imageSmoothingQuality = "high";
+      b.drawImage(small, 0, 0, 200, 240);
+      const tex = new THREE.CanvasTexture(big);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      ok(tex);
+    };
+    img.onerror = fail;
+    img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(portraitSvg)}`;
+  });
+}
+
+export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook, save?: TentSave, portraitSvg?: string): Area {
   const scene = new THREE.Scene();
   const night = new THREE.Color("#1c1820");
   scene.background = night;
@@ -297,6 +340,17 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
   smudge.position.set(0, 1.22, 0.05);
   smudge.scale.set(0.42, 0.55, 1);
   mirror.add(smudge);
+  // your portrait, still only a pencil sketch (it comes clearer each act)
+  if (portraitSvg) {
+    sketchTexture(portraitSvg)
+      .then((tex) => {
+        const sketch = new THREE.Mesh(new THREE.PlaneGeometry(0.44, 0.53), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.9, transparent: true, opacity: 0.92 }));
+        sketch.position.set(0, 1.16, 0.045);
+        mirror.add(sketch);
+        smudge.visible = false;
+      })
+      .catch((err) => console.warn("Mirror sketch did not draw.", err));
+  }
   // your note to your future self, tucked in the corner of the frame
   const note = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.1), flat("#f4ecd6"));
   note.position.set(0.22, 0.75, 0.05);
@@ -405,6 +459,30 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
   }
   placeKeeps();
 
+  // up to three favorite trail cards, picked in the satchel's album, lean at the back of the top shelf
+  const shelfCards = new THREE.Group();
+  shelf.add(shelfCards);
+  let cardsShown = "";
+  function placeCards() {
+    const ids = (save?.shelf ?? []).slice(0, 3);
+    const key = ids.join(",");
+    if (key === cardsShown) return;
+    cardsShown = key;
+    shelfCards.clear();
+    const top = shelfBoards[2].position.y + 0.02;
+    ids.forEach((id, i) => {
+      void cardTexture(id).then((tex) => {
+        if (!tex || cardsShown !== key) return;
+        const card = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.224), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.85 }));
+        card.position.set((i - (ids.length - 1) / 2) * 0.3, top + 0.11, -0.09);
+        card.rotation.x = -0.12;
+        card.rotation.y = (i - 1) * 0.08;
+        shelfCards.add(card);
+      });
+    });
+  }
+  placeCards();
+
   // ---------- the fox's corner, by the door on the east side ----------
   const FOXBED = { x: 1.75, z: 1.75 };
   const corner = new THREE.Group();
@@ -419,6 +497,16 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
   lump.position.y = 0.08;
   lump.scale.set(1, 0.8, 1);
   corner.add(cloth, lump);
+  // the roll-up basket you make at camp (see build.ts) takes the blanket's place
+  const basket = buildFoxBasket();
+  basket.visible = false;
+  corner.add(basket);
+  const placeBasket = () => {
+    const has = !!save?.built?.includes("basket");
+    basket.visible = has;
+    cloth.visible = lump.visible = !has;
+  };
+  placeBasket();
   corner.traverse((o) => (o.receiveShadow = o instanceof THREE.Mesh));
   spots.push({ id: "foxbed", label: "Look", x: FOXBED.x, z: FOXBED.z, range: 1.2, standX: FOXBED.x - 0.9, standZ: FOXBED.z - 0.3, tapTargets: [corner] });
 
@@ -478,12 +566,14 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
     ready,
     use(spot) {
       if (spot.id === "shelf") {
-        const have = JOURNAL_KEEPSAKES.filter((k) => save?.loot?.includes(k.id));
-        if (!have.length) return null;
-        const names = have.map((k) => k.name.toLowerCase());
-        const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
-        return `Your shelf: the ${list}. One for every stretch of days you looked after yourself.`;
+        const have = JOURNAL_KEEPSAKES.filter((k) => save?.loot?.includes(k.id)).map((k) => k.name.toLowerCase());
+        const cards = (save?.shelf ?? []).map((id) => cardFace(id)?.name).filter((n): n is string => !!n);
+        const and = (l: string[]) => (l.length === 1 ? l[0] : `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}`);
+        if (!have.length && !cards.length) return "A little shelf, empty for now. You can stand your favorite trail cards here from the satchel's card album.";
+        const parts = [have.length ? `the ${and(have)}` : "", cards.length ? `your ${cards.length === 1 ? "card" : "cards"} ${and(cards)}` : ""].filter(Boolean);
+        return `Your shelf: ${parts.join(", and ")}.`;
       }
+      if (spot.id === "foxbed" && save?.built?.includes("basket")) return "The roll-up basket, lined with chamomile. It smells like Della's tea. The fox sleeps here every night now.";
       if (spot.id !== "mirror") return null;
       const n = mirrorLooks++;
       const line = save?.firstLine?.trim();
@@ -498,6 +588,8 @@ export function createTentInside(renderer: THREE.WebGLRenderer, look: PersonLook
       tools.set(save?.tools ?? []);
       note.visible = !!save?.firstLine;
       placeKeeps();
+      placeBasket();
+      placeCards();
     },
     update(dt, time) {
       const flicker = Math.sin(time * 7) * 0.4 + Math.sin(time * 12.3) * 0.3 + Math.sin(time * 3.1) * 0.3;
